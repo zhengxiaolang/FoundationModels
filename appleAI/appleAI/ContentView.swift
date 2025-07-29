@@ -3,6 +3,7 @@ import SwiftUI
 enum ViewMode {
     case basicTest
     case realModelTest
+    case realAITest
     case compilationTest
     case fixVerification
     case simpleFeatures
@@ -87,10 +88,20 @@ struct ContentView: View {
                         Button("真实模型") {
                             viewMode = .realModelTest
                         }
-                        .padding(.horizontal, 10)
+                        .padding(.horizontal, 8)
                         .padding(.vertical, 6)
                         .background(viewMode == .realModelTest ? Color.purple : Color.gray.opacity(0.3))
                         .foregroundColor(viewMode == .realModelTest ? .white : .primary)
+                        .cornerRadius(6)
+                        .font(.caption)
+
+                        Button("🧠真实AI") {
+                            viewMode = .realAITest
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
+                        .background(viewMode == .realAITest ? Color.indigo : Color.gray.opacity(0.3))
+                        .foregroundColor(viewMode == .realAITest ? .white : .primary)
                         .cornerRadius(6)
                         .font(.caption)
                     }
@@ -145,6 +156,9 @@ struct ContentView: View {
                         .environmentObject(assistant)
                 case .realModelTest:
                     RealModelTestView()
+                        .environmentObject(assistant)
+                case .realAITest:
+                    RealAITestView()
                         .environmentObject(assistant)
                 case .compilationTest:
                     CompilationTestView()

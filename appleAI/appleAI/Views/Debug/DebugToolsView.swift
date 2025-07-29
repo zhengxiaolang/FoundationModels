@@ -59,8 +59,8 @@ struct SystemInfoView: View {
             Section("Foundation Models 支持") {
                 InfoRow(
                     title: "设备支持",
-                    value: MockLanguageModel.isSupported ? "✅ 支持" : "❌ 不支持",
-                    valueColor: MockLanguageModel.isSupported ? .green : .red
+                    value: FoundationLanguageModel.isSupported ? "✅ 支持" : "❌ 不支持",
+                    valueColor: FoundationLanguageModel.isSupported ? .green : .red
                 )
                 InfoRow(
                     title: "模型状态",
