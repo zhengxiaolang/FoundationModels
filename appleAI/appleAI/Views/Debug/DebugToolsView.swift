@@ -186,7 +186,7 @@ struct PerformanceMonitorView: View {
                         .font(.title2)
                         .foregroundColor(.secondary)
                     
-                    Text("点击"开始监控"来收集性能数据")
+                    Text("点击\"开始监控\"来收集性能数据")
                         .font(.body)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)

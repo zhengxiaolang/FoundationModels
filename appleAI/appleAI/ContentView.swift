@@ -4,6 +4,7 @@ enum ViewMode {
     case basicTest
     case realModelTest
     case compilationTest
+    case fixVerification
     case simpleFeatures
     case fullFeatures
 }
@@ -98,17 +99,27 @@ struct ContentView: View {
                         Button("编译测试") {
                             viewMode = .compilationTest
                         }
-                        .padding(.horizontal, 10)
+                        .padding(.horizontal, 8)
                         .padding(.vertical, 6)
                         .background(viewMode == .compilationTest ? Color.red : Color.gray.opacity(0.3))
                         .foregroundColor(viewMode == .compilationTest ? .white : .primary)
                         .cornerRadius(6)
                         .font(.caption)
 
+                        Button("修复验证") {
+                            viewMode = .fixVerification
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
+                        .background(viewMode == .fixVerification ? Color.mint : Color.gray.opacity(0.3))
+                        .foregroundColor(viewMode == .fixVerification ? .white : .primary)
+                        .cornerRadius(6)
+                        .font(.caption)
+
                         Button("简化功能") {
                             viewMode = .simpleFeatures
                         }
-                        .padding(.horizontal, 10)
+                        .padding(.horizontal, 8)
                         .padding(.vertical, 6)
                         .background(viewMode == .simpleFeatures ? Color.green : Color.gray.opacity(0.3))
                         .foregroundColor(viewMode == .simpleFeatures ? .white : .primary)
@@ -138,6 +149,9 @@ struct ContentView: View {
                 case .compilationTest:
                     CompilationTestView()
                         .environmentObject(assistant)
+                case .fixVerification:
+                    FixVerificationView()
+                        .environmentObject(assistant)
                 case .simpleFeatures:
                     SimpleFeatureListView()
                         .environmentObject(assistant)
@@ -148,7 +162,6 @@ struct ContentView: View {
             }
         }
         .navigationTitle("AI Demo")
-        }
     }
 }
 

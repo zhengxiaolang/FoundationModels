@@ -395,10 +395,11 @@ class AIAssistant: ObservableObject {
         }
         
         do {
-            let request = MockLanguageModelRequest(
+            let request = LanguageModelRequest(
                 prompt: prompt,
                 maxTokens: 10,
-                temperature: 0.1
+                temperature: 0.1,
+                taskType: .sentimentAnalysis
             )
             
             let response = try await model.generate(request)
@@ -440,10 +441,11 @@ class AIAssistant: ObservableObject {
         }
         
         do {
-            let request = MockLanguageModelRequest(
+            let request = LanguageModelRequest(
                 prompt: prompt,
                 maxTokens: maxLength * 2,
-                temperature: 0.3
+                temperature: 0.3,
+                taskType: .summarization
             )
             
             let response = try await model.generate(request)
@@ -480,10 +482,11 @@ class AIAssistant: ObservableObject {
         }
         
         do {
-            let request = MockLanguageModelRequest(
+            let request = LanguageModelRequest(
                 prompt: prompt,
                 maxTokens: 50,
-                temperature: 0.2
+                temperature: 0.2,
+                taskType: .keywordExtraction
             )
             
             let response = try await model.generate(request)
@@ -502,87 +505,6 @@ class AIAssistant: ObservableObject {
         } catch {
             await MainActor.run {
                 self.lastError = "关键词提取失败: \(error.localizedDescription)"
-                self.isProcessing = false
-            }
-            return nil
-        }
-    }
-    
-    // MARK: - 文本翻译
-    
-    func translateText(_ text: String, to language: String) async -> String? {
-        guard let model = model else { return nil }
-        
-        let prompt = """
-        请将以下文本翻译成\(language)：
-        
-        \(text)
-        
-        翻译：
-        """
-        
-        await MainActor.run {
-            self.isProcessing = true
-        }
-        
-        do {
-            let request = MockLanguageModelRequest(
-                prompt: prompt,
-                maxTokens: text.count * 2,
-                temperature: 0.3
-            )
-            
-            let response = try await model.generate(request)
-            
-            await MainActor.run {
-                self.isProcessing = false
-            }
-            
-            return response.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        } catch {
-            await MainActor.run {
-                self.lastError = "翻译失败: \(error.localizedDescription)"
-                self.isProcessing = false
-            }
-            return nil
-        }
-    }
-    
-    // MARK: - 文本改写
-    
-    func rewriteText(_ text: String, style: WritingStyle) async -> String? {
-        guard let model = model else { return nil }
-        
-        let styleDescription = style.description
-        let prompt = """
-        请将以下文本改写为\(styleDescription)风格：
-        
-        原文：\(text)
-        
-        改写后：
-        """
-        
-        await MainActor.run {
-            self.isProcessing = true
-        }
-        
-        do {
-            let request = MockLanguageModelRequest(
-                prompt: prompt,
-                maxTokens: text.count * 2,
-                temperature: 0.6
-            )
-            
-            let response = try await model.generate(request)
-            
-            await MainActor.run {
-                self.isProcessing = false
-            }
-            
-            return response.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        } catch {
-            await MainActor.run {
-                self.lastError = "文本改写失败: \(error.localizedDescription)"
                 self.isProcessing = false
             }
             return nil
