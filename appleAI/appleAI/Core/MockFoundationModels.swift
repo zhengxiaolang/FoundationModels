@@ -801,11 +801,9 @@ struct FoundationLanguageModel {
         let tagger = NLTagger(tagSchemes: [.sentimentScore])
         tagger.string = text
 
-        let (sentiment, confidence) = tagger.tag(at: text.startIndex, unit: .paragraph, scheme: .sentimentScore)
+        let (sentiment, _) = tagger.tag(at: text.startIndex, unit: .paragraph, scheme: .sentimentScore)
 
         if let sentimentScore = sentiment?.rawValue, let score = Double(sentimentScore) {
-            let confidenceValue = confidence
-
             let sentimentLabel: String
             if score > 0.1 {
                 sentimentLabel = "积极"
@@ -815,7 +813,7 @@ struct FoundationLanguageModel {
                 sentimentLabel = "中性"
             }
 
-            return "情感分析结果：\(sentimentLabel)（置信度：\(String(format: "%.2f", confidenceValue))，分数：\(String(format: "%.2f", score))）"
+            return "情感分析结果：\(sentimentLabel)（分数：\(String(format: "%.2f", score))）"
         }
 
         return "情感分析结果：中性（无法确定具体情感倾向）"
@@ -831,7 +829,7 @@ struct FoundationLanguageModel {
         // 提取命名实体
         let range = text.startIndex..<text.endIndex
         tagger.enumerateTags(in: range, unit: .word, scheme: .nameType) { tag, tokenRange in
-            if let tag = tag {
+            if tag != nil {
                 let word = String(text[tokenRange])
                 if word.count > 2 { // 过滤掉太短的词
                     keywords.insert(word)
@@ -954,6 +952,11 @@ enum ConversationIntent {
     case creative
     case farewell
     case general
+}
+
+struct TokenUsage {
+    let promptTokens: Int
+    let completionTokens: Int
 }
 
 struct LanguageModelResponse {

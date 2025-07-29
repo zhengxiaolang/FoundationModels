@@ -14,7 +14,7 @@ struct ContentProcessingView: View {
                 }
                 .tag(0)
 
-            TranslationView()
+            ContentProcessingTranslationView()
                 .environmentObject(assistant)
                 .tabItem {
                     Image(systemName: "globe")
@@ -196,7 +196,7 @@ struct TextRewritingView: View {
         isRewriting = true
         
         Task {
-            if let result = await assistant.rewriteText(inputText, style: selectedStyle) {
+            if let result = await assistant.rewriteText(inputText, style: selectedStyle.rawValue) {
                 await MainActor.run {
                     rewrittenText = result
                     isRewriting = false
@@ -210,7 +210,7 @@ struct TextRewritingView: View {
     }
 }
 
-struct TranslationView: View {
+struct ContentProcessingTranslationView: View {
     @EnvironmentObject var assistant: AIAssistant
     @State private var inputText = ""
     @State private var translatedText = ""

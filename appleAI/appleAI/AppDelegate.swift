@@ -7,7 +7,6 @@
 
 import UIKit
 import Foundation
-import FoundationModels
 
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate {
