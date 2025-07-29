@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct FeatureListView: View {
-    @StateObject private var assistant = AIAssistant()
+    @EnvironmentObject var assistant: AIAssistant
     
     private let features: [FeatureItem] = [
         FeatureItem(
@@ -71,7 +71,6 @@ struct FeatureListView: View {
         }
         .navigationTitle("Foundation Models Demo")
         .navigationBarTitleDisplayMode(.large)
-        .environmentObject(assistant)
     }
 }
 

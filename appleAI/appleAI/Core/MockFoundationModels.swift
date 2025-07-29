@@ -1,4 +1,6 @@
 import Foundation
+import SwiftUI
+import Combine
 
 // 模拟 Apple Foundation Models Framework
 // 这是一个模拟实现，用于演示目的
@@ -8,8 +10,8 @@ struct MockLanguageModel {
         // 模拟设备支持检查
         return true
     }
-    
-    init() throws {
+
+    init() {
         // 模拟初始化过程
     }
     
@@ -222,8 +224,6 @@ enum FoundationModelsError: LocalizedError {
         }
     }
 }
-
-import SwiftUI
 
 // MARK: - 调试日志管理器
 

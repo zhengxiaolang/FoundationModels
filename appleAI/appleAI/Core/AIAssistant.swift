@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import Combine
 
 // 模拟 FoundationModels 框架的结构
 // 注意：这是一个模拟实现，实际的 Apple Foundation Models Framework 可能有不同的 API
@@ -8,9 +9,9 @@ class AIAssistant: ObservableObject {
     @Published var isModelLoaded = false
     @Published var isProcessing = false
     @Published var lastError: String?
-    
+
     private var model: MockLanguageModel?
-    
+
     init() {
         setupModel()
     }
@@ -45,7 +46,7 @@ class AIAssistant: ObservableObject {
                 // 模拟加载时间
                 try await Task.sleep(nanoseconds: 2_000_000_000) // 2秒
 
-                self.model = try MockLanguageModel()
+                self.model = MockLanguageModel()
 
                 await MainActor.run {
                     self.isModelLoaded = true
