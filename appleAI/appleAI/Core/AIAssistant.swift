@@ -9,8 +9,9 @@ class AIAssistant: ObservableObject {
     @Published var isModelLoaded = false
     @Published var isProcessing = false
     @Published var lastError: String?
+    @Published var loadingProgress: String = "准备初始化..."
 
-    private var model: MockLanguageModel?
+    private var model: FoundationLanguageModel?
 
     init() {
         setupModel()
@@ -22,8 +23,8 @@ class AIAssistant: ObservableObject {
 
         Task {
             do {
-                // 模拟检查设备支持
-                guard MockLanguageModel.isSupported else {
+                // 检查设备支持
+                guard FoundationLanguageModel.isSupported else {
                     print("❌ 设备不支持 Foundation Models")
                     DebugLogger.shared.log("设备不支持 Foundation Models", level: .error)
                     await MainActor.run {
@@ -38,17 +39,37 @@ class AIAssistant: ObservableObject {
                 // 模拟模型初始化
                 await MainActor.run {
                     self.isProcessing = true
+                    self.loadingProgress = "初始化 AI 框架..."
                 }
 
                 print("⏳ 正在加载模型...")
                 DebugLogger.shared.log("正在加载模型", level: .info)
 
-                // 模拟加载时间
-                try await Task.sleep(nanoseconds: 2_000_000_000) // 2秒
-
-                self.model = MockLanguageModel()
+                // 模拟分阶段加载
+                try await Task.sleep(nanoseconds: 800_000_000) // 0.8秒
 
                 await MainActor.run {
+                    self.loadingProgress = "加载 Natural Language 框架..."
+                }
+
+                try await Task.sleep(nanoseconds: 600_000_000) // 0.6秒
+
+                await MainActor.run {
+                    self.loadingProgress = "初始化文本处理模型..."
+                }
+
+                try await Task.sleep(nanoseconds: 400_000_000) // 0.4秒
+
+                await MainActor.run {
+                    self.loadingProgress = "准备 AI 功能模块..."
+                }
+
+                try await Task.sleep(nanoseconds: 200_000_000) // 0.2秒
+
+                self.model = FoundationLanguageModel()
+
+                await MainActor.run {
+                    self.loadingProgress = "初始化完成"
                     self.isModelLoaded = true
                     self.isProcessing = false
                     self.lastError = nil
@@ -62,6 +83,7 @@ class AIAssistant: ObservableObject {
                 await MainActor.run {
                     self.lastError = "模型初始化失败: \(error.localizedDescription)"
                     self.isProcessing = false
+                    self.loadingProgress = "初始化失败"
                 }
             }
         }
@@ -83,10 +105,11 @@ class AIAssistant: ObservableObject {
         }
         
         do {
-            let request = MockLanguageModelRequest(
+            let request = LanguageModelRequest(
                 prompt: prompt,
                 maxTokens: maxTokens,
-                temperature: temperature
+                temperature: temperature,
+                taskType: .textGeneration
             )
             
             let response = try await model.generate(request)
@@ -104,7 +127,256 @@ class AIAssistant: ObservableObject {
             return nil
         }
     }
-    
+
+    // MARK: - 专门的任务方法
+
+    func translateText(_ text: String, to targetLanguage: String) async -> String? {
+        guard let model = model else {
+            await MainActor.run {
+                self.lastError = "模型未加载"
+            }
+            return nil
+        }
+
+        await MainActor.run {
+            self.isProcessing = true
+            self.lastError = nil
+        }
+
+        do {
+            let request = LanguageModelRequest(
+                prompt: text,
+                taskType: .translation,
+                targetLanguage: targetLanguage
+            )
+
+            let response = try await model.generate(request)
+
+            await MainActor.run {
+                self.isProcessing = false
+            }
+
+            return response.text
+        } catch {
+            await MainActor.run {
+                self.lastError = "翻译失败: \(error.localizedDescription)"
+                self.isProcessing = false
+            }
+            return nil
+        }
+    }
+
+    func summarizeText(_ text: String) async -> String? {
+        guard let model = model else {
+            await MainActor.run {
+                self.lastError = "模型未加载"
+            }
+            return nil
+        }
+
+        await MainActor.run {
+            self.isProcessing = true
+            self.lastError = nil
+        }
+
+        do {
+            let request = LanguageModelRequest(
+                prompt: text,
+                taskType: .summarization
+            )
+
+            let response = try await model.generate(request)
+
+            await MainActor.run {
+                self.isProcessing = false
+            }
+
+            return response.text
+        } catch {
+            await MainActor.run {
+                self.lastError = "摘要生成失败: \(error.localizedDescription)"
+                self.isProcessing = false
+            }
+            return nil
+        }
+    }
+
+    func analyzeSentiment(_ text: String) async -> String? {
+        guard let model = model else {
+            await MainActor.run {
+                self.lastError = "模型未加载"
+            }
+            return nil
+        }
+
+        await MainActor.run {
+            self.isProcessing = true
+            self.lastError = nil
+        }
+
+        do {
+            let request = LanguageModelRequest(
+                prompt: text,
+                taskType: .sentimentAnalysis
+            )
+
+            let response = try await model.generate(request)
+
+            await MainActor.run {
+                self.isProcessing = false
+            }
+
+            return response.text
+        } catch {
+            await MainActor.run {
+                self.lastError = "情感分析失败: \(error.localizedDescription)"
+                self.isProcessing = false
+            }
+            return nil
+        }
+    }
+
+    func extractKeywords(_ text: String) async -> String? {
+        guard let model = model else {
+            await MainActor.run {
+                self.lastError = "模型未加载"
+            }
+            return nil
+        }
+
+        await MainActor.run {
+            self.isProcessing = true
+            self.lastError = nil
+        }
+
+        do {
+            let request = LanguageModelRequest(
+                prompt: text,
+                taskType: .keywordExtraction
+            )
+
+            let response = try await model.generate(request)
+
+            await MainActor.run {
+                self.isProcessing = false
+            }
+
+            return response.text
+        } catch {
+            await MainActor.run {
+                self.lastError = "关键词提取失败: \(error.localizedDescription)"
+                self.isProcessing = false
+            }
+            return nil
+        }
+    }
+
+    func classifyText(_ text: String) async -> String? {
+        guard let model = model else {
+            await MainActor.run {
+                self.lastError = "模型未加载"
+            }
+            return nil
+        }
+
+        await MainActor.run {
+            self.isProcessing = true
+            self.lastError = nil
+        }
+
+        do {
+            let request = LanguageModelRequest(
+                prompt: text,
+                taskType: .textClassification
+            )
+
+            let response = try await model.generate(request)
+
+            await MainActor.run {
+                self.isProcessing = false
+            }
+
+            return response.text
+        } catch {
+            await MainActor.run {
+                self.lastError = "文本分类失败: \(error.localizedDescription)"
+                self.isProcessing = false
+            }
+            return nil
+        }
+    }
+
+    func rewriteText(_ text: String, style: String) async -> String? {
+        guard let model = model else {
+            await MainActor.run {
+                self.lastError = "模型未加载"
+            }
+            return nil
+        }
+
+        await MainActor.run {
+            self.isProcessing = true
+            self.lastError = nil
+        }
+
+        do {
+            let request = LanguageModelRequest(
+                prompt: text,
+                taskType: .textRewriting,
+                rewriteStyle: style
+            )
+
+            let response = try await model.generate(request)
+
+            await MainActor.run {
+                self.isProcessing = false
+            }
+
+            return response.text
+        } catch {
+            await MainActor.run {
+                self.lastError = "文本改写失败: \(error.localizedDescription)"
+                self.isProcessing = false
+            }
+            return nil
+        }
+    }
+
+    func generateConversationResponse(_ prompt: String) async -> String? {
+        guard let model = model else {
+            await MainActor.run {
+                self.lastError = "模型未加载"
+            }
+            return nil
+        }
+
+        await MainActor.run {
+            self.isProcessing = true
+            self.lastError = nil
+        }
+
+        do {
+            let request = LanguageModelRequest(
+                prompt: prompt,
+                taskType: .conversation
+            )
+
+            let response = try await model.generate(request)
+
+            await MainActor.run {
+                self.isProcessing = false
+            }
+
+            return response.text
+        } catch {
+            await MainActor.run {
+                self.lastError = "对话生成失败: \(error.localizedDescription)"
+                self.isProcessing = false
+            }
+            return nil
+        }
+    }
+
     // MARK: - 文本分析功能
     
     func analyzeSentiment(text: String) async -> SentimentResult? {

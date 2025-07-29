@@ -52,6 +52,7 @@ struct SmartNotesView: View {
                     note: binding(for: note),
                     onUpdate: updateNote
                 )
+                .environmentObject(assistant)
             } else {
                 NoteEmptyDetailView()
             }
@@ -61,6 +62,7 @@ struct SmartNotesView: View {
                 notes.append(newNote)
                 selectedNote = newNote
             }
+            .environmentObject(assistant)
         }
         .onAppear {
             loadSampleNotes()

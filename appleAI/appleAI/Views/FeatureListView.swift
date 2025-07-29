@@ -9,42 +9,42 @@ struct FeatureListView: View {
             description: "创意写作、内容摘要、文本补全",
             icon: "pencil.and.outline",
             color: .blue,
-            destination: TextGenerationView()
+            destinationType: .textGeneration
         ),
         FeatureItem(
             title: "文本分析",
             description: "情感分析、关键词提取、文本分类",
             icon: "chart.bar.doc.horizontal",
             color: .green,
-            destination: TextAnalysisView()
+            destinationType: .textAnalysis
         ),
         FeatureItem(
             title: "对话系统",
             description: "智能聊天机器人、问答系统",
             icon: "bubble.left.and.bubble.right",
             color: .purple,
-            destination: ChatView()
+            destinationType: .chat
         ),
         FeatureItem(
             title: "内容处理",
             description: "文本改写、语言翻译、格式转换",
             icon: "arrow.triangle.2.circlepath",
             color: .orange,
-            destination: ContentProcessingView()
+            destinationType: .contentProcessing
         ),
         FeatureItem(
             title: "智能笔记",
             description: "AI增强的笔记应用",
             icon: "note.text",
             color: .indigo,
-            destination: SmartNotesView()
+            destinationType: .smartNotes
         ),
         FeatureItem(
             title: "调试工具",
             description: "性能监控、错误追踪、日志查看",
             icon: "wrench.and.screwdriver",
             color: .red,
-            destination: DebugToolsView()
+            destinationType: .debugTools
         )
     ]
     
@@ -60,7 +60,7 @@ struct FeatureListView: View {
                     GridItem(.flexible())
                 ], spacing: 16) {
                     ForEach(features) { feature in
-                        NavigationLink(destination: feature.destination) {
+                        NavigationLink(destination: destinationView(for: feature.destinationType)) {
                             FeatureCardView(feature: feature)
                         }
                         .buttonStyle(PlainButtonStyle())
@@ -71,6 +71,27 @@ struct FeatureListView: View {
         }
         .navigationTitle("Foundation Models Demo")
         .navigationBarTitleDisplayMode(.large)
+    }
+
+    @ViewBuilder
+    private func destinationView(for type: FeatureDestination) -> some View {
+        Group {
+            switch type {
+            case .textGeneration:
+                TextGenerationView()
+            case .textAnalysis:
+                TextAnalysisView()
+            case .chat:
+                ChatView()
+            case .contentProcessing:
+                ContentProcessingView()
+            case .smartNotes:
+                SmartNotesView()
+            case .debugTools:
+                DebugToolsView()
+            }
+        }
+        .environmentObject(assistant)
     }
 }
 
