@@ -6,9 +6,6 @@ import NaturalLanguage
 // Apple Foundation Models Framework 实现
 // 使用真实的 Apple Foundation Models API 和 Natural Language 框架
 
-@available(iOS 18.0, *)
-import Translation
-
 struct FoundationLanguageModel {
     static var isSupported: Bool {
         // 检查设备是否支持 Foundation Models
@@ -193,7 +190,7 @@ struct FoundationLanguageModel {
                 Thread.sleep(forTimeInterval: Double.random(in: 0.5...1.5))
 
                 // 执行文本改写
-                let rewrittenText = self.rewriteTextWithStyle(text: text, style: style)
+                let rewrittenText = self.performBasicTextRewriting(text: text, style: style)
                 continuation.resume(returning: rewrittenText)
             }
         }
@@ -380,7 +377,8 @@ struct FoundationLanguageModel {
         var keywords: Set<String> = []
 
         // 提取命名实体
-        tagger.enumerateTokens(in: text.startIndex..<text.endIndex, unit: .word, scheme: .nameType) { tokenRange, tag, _ in
+        let range = text.startIndex..<text.endIndex
+        tagger.enumerateTags(in: range, unit: .word, scheme: .nameType) { tag, tokenRange in
             if let tag = tag {
                 let word = String(text[tokenRange])
                 if word.count > 2 { // 过滤掉太短的词
@@ -391,7 +389,7 @@ struct FoundationLanguageModel {
         }
 
         // 提取重要的名词
-        tagger.enumerateTokens(in: text.startIndex..<text.endIndex, unit: .word, scheme: .lexicalClass) { tokenRange, tag, _ in
+        tagger.enumerateTags(in: range, unit: .word, scheme: .lexicalClass) { tag, tokenRange in
             if tag == .noun {
                 let word = String(text[tokenRange])
                 if word.count > 2 {
@@ -407,6 +405,42 @@ struct FoundationLanguageModel {
         }
 
         return Array(keywords.prefix(5)) // 返回前5个关键词
+    }
+
+    private func performBasicTextRewriting(text: String, style: String) -> String {
+        // 根据不同风格改写文本
+        switch style.lowercased() {
+        case "formal", "正式":
+            return rewriteToFormal(text)
+        case "casual", "随意":
+            return rewriteToCasual(text)
+        case "professional", "专业":
+            return rewriteToProfessional(text)
+        case "creative", "创意":
+            return rewriteToCreative(text)
+        default:
+            return rewriteToFormal(text)
+        }
+    }
+
+    private func rewriteToFormal(_ text: String) -> String {
+        return "【正式风格改写】\n\n" + text.replacingOccurrences(of: "很", with: "非常")
+            .replacingOccurrences(of: "好的", with: "良好的")
+            .replacingOccurrences(of: "不错", with: "优秀")
+    }
+
+    private func rewriteToCasual(_ text: String) -> String {
+        return "【随意风格改写】\n\n" + text.replacingOccurrences(of: "非常", with: "超级")
+            .replacingOccurrences(of: "优秀", with: "棒")
+            .replacingOccurrences(of: "良好", with: "不错")
+    }
+
+    private func rewriteToProfessional(_ text: String) -> String {
+        return "【专业风格改写】\n\n基于提供的内容，经过专业化处理后的文本如下：\n\n" + text
+    }
+
+    private func rewriteToCreative(_ text: String) -> String {
+        return "【创意风格改写】\n\n✨ " + text + " ✨\n\n这段文字充满了创意的火花，展现了独特的表达方式。"
     }
 
     private func classifyTextWithNL(text: String) -> String {

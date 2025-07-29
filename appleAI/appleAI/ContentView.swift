@@ -3,6 +3,7 @@ import SwiftUI
 enum ViewMode {
     case basicTest
     case realModelTest
+    case compilationTest
     case simpleFeatures
     case fullFeatures
 }
@@ -94,6 +95,16 @@ struct ContentView: View {
                     }
 
                     HStack(spacing: 8) {
+                        Button("编译测试") {
+                            viewMode = .compilationTest
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(viewMode == .compilationTest ? Color.red : Color.gray.opacity(0.3))
+                        .foregroundColor(viewMode == .compilationTest ? .white : .primary)
+                        .cornerRadius(6)
+                        .font(.caption)
+
                         Button("简化功能") {
                             viewMode = .simpleFeatures
                         }
@@ -103,17 +114,17 @@ struct ContentView: View {
                         .foregroundColor(viewMode == .simpleFeatures ? .white : .primary)
                         .cornerRadius(6)
                         .font(.caption)
-
-                        Button("完整功能") {
-                            viewMode = .fullFeatures
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(viewMode == .fullFeatures ? Color.orange : Color.gray.opacity(0.3))
-                        .foregroundColor(viewMode == .fullFeatures ? .white : .primary)
-                        .cornerRadius(6)
-                        .font(.caption)
                     }
+
+                    Button("完整功能") {
+                        viewMode = .fullFeatures
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(viewMode == .fullFeatures ? Color.orange : Color.gray.opacity(0.3))
+                    .foregroundColor(viewMode == .fullFeatures ? .white : .primary)
+                    .cornerRadius(6)
+                    .font(.caption)
                 }
 
                 // 内容区域
@@ -123,6 +134,9 @@ struct ContentView: View {
                         .environmentObject(assistant)
                 case .realModelTest:
                     RealModelTestView()
+                        .environmentObject(assistant)
+                case .compilationTest:
+                    CompilationTestView()
                         .environmentObject(assistant)
                 case .simpleFeatures:
                     SimpleFeatureListView()
