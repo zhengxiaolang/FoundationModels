@@ -41,10 +41,10 @@ struct ContentProcessingView: View {
 
 struct TextRewritingView: View {
     @EnvironmentObject var assistant: AIAssistant
+    @StateObject private var textManager = TextGenerationManager()
     @State private var inputText = ""
     @State private var rewrittenText = ""
     @State private var selectedStyle = WritingStyle.formal
-    @State private var isRewriting = false
     
     private let sampleTexts = [
         "这个产品的性能非常好，我很满意。",
@@ -134,11 +134,11 @@ struct TextRewritingView: View {
     private var rewriteButton: some View {
         Button(action: rewriteText) {
             HStack {
-                if isRewriting {
+                if textManager.isProcessing {
                     ProgressView()
                         .scaleEffect(0.8)
                 }
-                Text(isRewriting ? "改写中..." : "开始改写")
+                Text(textManager.isProcessing ? "改写中..." : "开始改写")
             }
             .frame(maxWidth: .infinity)
             .padding()
@@ -146,7 +146,7 @@ struct TextRewritingView: View {
             .foregroundColor(.white)
             .cornerRadius(10)
         }
-        .disabled(inputText.isEmpty || isRewriting)
+        .disabled(inputText.isEmpty || textManager.isProcessing)
     }
     
     @ViewBuilder
@@ -206,18 +206,24 @@ struct TextRewritingView: View {
     }
     
     private func rewriteText() {
-        isRewriting = true
+        guard !inputText.isEmpty else { return }
         
         Task {
-            if let result = await assistant.rewriteText(inputText, style: selectedStyle.rawValue) {
+            do {
+                // 使用 TextGenerationManager 的文本改写
+                let result = try await textManager.generateRewrite(
+                    text: inputText,
+                    style: selectedStyle.rawValue
+                )
+                
                 await MainActor.run {
                     rewrittenText = result
-                    isRewriting = false
                 }
-            } else {
+            } catch {
                 await MainActor.run {
-                    isRewriting = false
+                    rewrittenText = "改写失败：\(error.localizedDescription)"
                 }
+                print("文本改写失败: \(error)")
             }
         }
     }
@@ -225,10 +231,10 @@ struct TextRewritingView: View {
 
 struct ContentProcessingTranslationView: View {
     @EnvironmentObject var assistant: AIAssistant
+    @StateObject private var textManager = TextGenerationManager()
     @State private var inputText = ""
     @State private var translatedText = ""
     @State private var targetLanguage = "英文"
-    @State private var isTranslating = false
     
     private let languages = ["英文", "日文", "韩文", "法文", "德文", "西班牙文", "俄文", "阿拉伯文"]
     
@@ -301,11 +307,11 @@ struct ContentProcessingTranslationView: View {
             // 翻译按钮
             Button(action: translateText) {
                 HStack {
-                    if isTranslating {
+                    if textManager.isProcessing {
                         ProgressView()
                             .scaleEffect(0.8)
                     }
-                    Text(isTranslating ? "翻译中..." : "开始翻译")
+                    Text(textManager.isProcessing ? "翻译中..." : "开始翻译")
                 }
                 .frame(maxWidth: .infinity)
                 .padding()
@@ -313,7 +319,7 @@ struct ContentProcessingTranslationView: View {
                 .foregroundColor(.white)
                 .cornerRadius(10)
             }
-            .disabled(inputText.isEmpty || isTranslating)
+            .disabled(inputText.isEmpty || textManager.isProcessing)
             
             // 翻译结果
             if !translatedText.isEmpty {
@@ -373,18 +379,24 @@ struct ContentProcessingTranslationView: View {
     }
     
     private func translateText() {
-        isTranslating = true
+        guard !inputText.isEmpty else { return }
         
         Task {
-            if let result = await assistant.translateText(inputText, to: targetLanguage) {
+            do {
+                // 使用 TextGenerationManager 的真正AI翻译
+                let result = try await textManager.generateTranslation(
+                    text: inputText,
+                    to: targetLanguage
+                )
+                
                 await MainActor.run {
                     translatedText = result
-                    isTranslating = false
                 }
-            } else {
+            } catch {
                 await MainActor.run {
-                    isTranslating = false
+                    translatedText = "翻译失败：\(error.localizedDescription)"
                 }
+                print("翻译失败: \(error)")
             }
         }
     }

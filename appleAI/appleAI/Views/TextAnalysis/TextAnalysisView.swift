@@ -47,15 +47,13 @@ struct SentimentAnalysisView: View {
     @State private var analysisResult = ""
     @State private var sentimentResult: SentimentResult?
     @State private var analysisHistory: [SentimentResult] = []
-    @State private var isAnalyzing = false
     @FocusState private var isTextEditorFocused: Bool
     
     private let sampleTexts = [
         "今天天气真好，心情特别愉快！",
-        "这个产品质量太差了，非常失望。",
-        "会议内容比较中性，没有特别的感受。",
-        "收到了朋友的生日祝福，感到很温暖。",
-        "工作压力很大，感觉有些疲惫。"
+        "这部电影太无聊了，完全浪费时间。",
+        "这个产品的质量还算可以，价格也合理。",
+        "工作进展顺利，团队合作很愉快。"
     ]
     
     var body: some View {
@@ -73,234 +71,6 @@ struct SentimentAnalysisView: View {
                         if keyboardManager.isKeyboardVisible {
                             Button(action: {
                                 keyboardManager.dismissKeyboard()
-                                isTextEditorFocused = false
-                            }) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "keyboard.chevron.compact.down")
-                                    Text("关闭键盘")
-                                }
-                                .font(.caption)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(Color(.systemGray5))
-                                .foregroundColor(.primary)
-                                .cornerRadius(12)
-                            }
-                        }
-                    }
-                    
-                    TextEditor(text: $inputText)
-                        .frame(minHeight: 100)
-                        .padding(8)
-                        .background(Color(.systemGray6))
-                        .cornerRadius(8)
-                        .focused($isTextEditorFocused)
-                    
-                    // 示例文本
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(sampleTexts, id: \.self) { sample in
-                                Button(sample) {
-                                    inputText = sample
-                                }
-                                .font(.caption)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background(Color.green.opacity(0.1))
-                                .foregroundColor(.green)
-                                .cornerRadius(16)
-                                .lineLimit(1)
-                            }
-                        }
-                        .padding(.horizontal)
-                    }
-                }
-                
-                // 分析按钮
-                Button(action: analyzeSentiment) {
-                    HStack {
-                        if isAnalyzing {
-                            ProgressView()
-                                .scaleEffect(0.8)
-                        }
-                        Text(isAnalyzing ? "分析中..." : "分析情感")
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(inputText.isEmpty ? Color.gray : Color.green)
-                    .foregroundColor(.white)
-                    .cornerRadius(10)
-                }
-                .disabled(inputText.isEmpty || isAnalyzing)
-                
-                // 分析结果
-                if let result = sentimentResult {
-                    SentimentResultCard(result: result)
-                }
-                
-                // 历史记录
-                if !analysisHistory.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("分析历史")
-                            .font(.headline)
-                        
-                        LazyVStack(spacing: 8) {
-                            ForEach(analysisHistory.indices, id: \.self) { index in
-                                let result = analysisHistory[index]
-                                SentimentHistoryCard(result: result)
-                            }
-                        }
-                        .frame(maxHeight: 200)
-                    }
-                }
-            }
-            .padding()
-        }
-        .scrollViewKeyboardAware()
-    }
-    
-    private func analyzeSentiment() {
-        isAnalyzing = true
-        
-        Task {
-            if let result = await assistant.analyzeSentiment(text: inputText) {
-                await MainActor.run {
-                    sentimentResult = result
-                    analysisHistory.insert(result, at: 0)
-                    if analysisHistory.count > 10 {
-                        analysisHistory.removeLast()
-                    }
-                    isAnalyzing = false
-                }
-            } else {
-                await MainActor.run {
-                    isAnalyzing = false
-                }
-            }
-        }
-    }
-}
-
-struct SentimentResultCard: View {
-    let result: SentimentResult
-    
-    var body: some View {
-        VStack(spacing: 12) {
-            HStack {
-                Text("情感分析结果")
-                    .font(.headline)
-                Spacer()
-            }
-            
-            HStack(spacing: 16) {
-                // 情感图标和标签
-                VStack(spacing: 8) {
-                    Text(result.sentiment.icon)
-                        .font(.system(size: 40))
-                    
-                    Text(result.sentiment.displayName)
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                        .foregroundColor(result.sentiment.color)
-                }
-                
-                Spacer()
-                
-                // 置信度
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text("置信度")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    
-                    Text("\(Int(result.confidence * 100))%")
-                        .font(.title3)
-                        .fontWeight(.medium)
-                    
-                    // 置信度进度条
-                    ProgressView(value: result.confidence)
-                        .progressViewStyle(LinearProgressViewStyle(tint: result.sentiment.color))
-                        .frame(width: 80)
-                }
-            }
-            
-            // 分析文本预览
-            Text(result.text)
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .lineLimit(2)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding()
-        .background(result.sentiment.color.opacity(0.1))
-        .cornerRadius(12)
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(result.sentiment.color.opacity(0.3), lineWidth: 1)
-        )
-    }
-}
-
-struct SentimentHistoryCard: View {
-    let result: SentimentResult
-    
-    var body: some View {
-        HStack(spacing: 12) {
-            Text(result.sentiment.icon)
-                .font(.title3)
-            
-            VStack(alignment: .leading, spacing: 2) {
-                Text(result.text)
-                    .font(.caption)
-                    .lineLimit(1)
-                
-                Text(result.sentiment.displayName)
-                    .font(.caption2)
-                    .foregroundColor(result.sentiment.color)
-            }
-            
-            Spacer()
-            
-            Text("\(Int(result.confidence * 100))%")
-                .font(.caption2)
-                .foregroundColor(.secondary)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color(.systemGray6))
-        .cornerRadius(8)
-    }
-}
-
-struct KeywordExtractionView: View {
-    @EnvironmentObject var assistant: AIAssistant
-    @EnvironmentObject var keyboardManager: KeyboardManager
-    @State private var inputText = ""
-    @State private var keywords: [String] = []
-    @State private var isExtracting = false
-    @FocusState private var isTextEditorFocused: Bool
-    
-    private let sampleTexts = [
-        "人工智能技术正在快速发展，机器学习和深度学习算法在各个领域都有广泛应用。",
-        "可持续发展是当今世界面临的重要挑战，需要通过技术创新和政策改革来实现。",
-        "移动互联网改变了人们的生活方式，智能手机成为了日常生活中不可缺少的工具。"
-    ]
-    
-    var body: some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                // 输入区域
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("待分析文本")
-                            .font(.headline)
-                        
-                        Spacer()
-                        
-                        // 键盘关闭按钮
-                        if keyboardManager.isKeyboardVisible {
-                            Button(action: {
-                                keyboardManager.dismissKeyboard()
-                                isTextEditorFocused = false
                             }) {
                                 HStack(spacing: 4) {
                                     Image(systemName: "keyboard.chevron.compact.down")
@@ -324,31 +94,33 @@ struct KeywordExtractionView: View {
                         .focused($isTextEditorFocused)
                     
                     // 示例文本
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("示例文本:")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        
-                        ForEach(sampleTexts, id: \.self) { sample in
-                            Button(sample) {
-                                inputText = sample
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(sampleTexts, id: \.self) { sample in
+                                Button(sample) {
+                                    inputText = sample
+                                    keyboardManager.dismissKeyboard()
+                                }
+                                .font(.caption)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Color.blue.opacity(0.1))
+                                .foregroundColor(.blue)
+                                .cornerRadius(16)
                             }
-                            .font(.caption)
-                            .foregroundColor(.blue)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .multilineTextAlignment(.leading)
                         }
+                        .padding(.horizontal)
                     }
                 }
                 
-                // 提取按钮
-                Button(action: extractKeywords) {
+                // 分析按钮
+                Button(action: analyzeSentiment) {
                     HStack {
-                        if isExtracting {
+                        if textManager.isProcessing {
                             ProgressView()
                                 .scaleEffect(0.8)
                         }
-                        Text(isExtracting ? "提取中..." : "提取关键词")
+                        Text(textManager.isProcessing ? "分析中..." : "开始分析")
                     }
                     .frame(maxWidth: .infinity)
                     .padding()
@@ -356,7 +128,222 @@ struct KeywordExtractionView: View {
                     .foregroundColor(.white)
                     .cornerRadius(10)
                 }
-                .disabled(inputText.isEmpty || isExtracting)
+                .disabled(inputText.isEmpty || textManager.isProcessing)
+                
+                // 分析结果
+                if let result = sentimentResult {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Text("分析结果")
+                                .font(.headline)
+                            
+                            Spacer()
+                            
+                            Button("复制结果") {
+                                UIPasteboard.general.string = result.analysis
+                            }
+                            .font(.caption)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.blue.opacity(0.1))
+                            .foregroundColor(.blue)
+                            .cornerRadius(16)
+                        }
+                        
+                        // 情感结果卡片
+                        VStack(spacing: 8) {
+                            HStack {
+                                Image(systemName: result.sentiment.icon)
+                                    .foregroundColor(result.sentiment.color)
+                                
+                                Text(result.sentiment.displayName.capitalized)
+                                    .font(.headline)
+                                    .foregroundColor(result.sentiment.color)
+                                
+                                Spacer()
+                                
+                                Text("置信度: \(String(format: "%.1f", result.confidence * 100))%")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            
+                            Text(result.analysis)
+                                .font(.body)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .padding()
+                        .background(result.sentiment.color.opacity(0.1))
+                        .cornerRadius(8)
+                    }
+                }
+                
+                // 历史记录
+                if !analysisHistory.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("分析历史")
+                            .font(.headline)
+                        
+                        ForEach(analysisHistory.prefix(3)) { result in
+                            HStack {
+                                Image(systemName: result.sentiment.icon)
+                                    .foregroundColor(result.sentiment.color)
+                                
+                                Text(result.text.prefix(30) + (result.text.count > 30 ? "..." : ""))
+                                    .font(.caption)
+                                    .lineLimit(1)
+                                
+                                Spacer()
+                                
+                                Text(result.sentiment.displayName)
+                                    .font(.caption)
+                                    .foregroundColor(result.sentiment.color)
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
+                    .padding()
+                    .background(Color(.systemGray6))
+                    .cornerRadius(8)
+                }
+                
+                Spacer(minLength: 50)
+            }
+            .padding()
+        }
+        .scrollViewKeyboardAware()
+    }
+    
+    private func analyzeSentiment() {
+        guard !inputText.isEmpty else { return }
+        
+        Task {
+            do {
+                // 使用 TextGenerationManager 的情感分析
+                let result = try await textManager.analyzeSentiment(text: inputText)
+                
+                await MainActor.run {
+                    // 创建简单的情感结果（这里应该解析AI的回复）
+                    let sentiment: Sentiment = result.lowercased().contains("积极") ? .positive : 
+                                             result.lowercased().contains("消极") ? .negative : .neutral
+                    
+                    let sentimentResult = SentimentResult(
+                        text: inputText,
+                        sentiment: sentiment,
+                        confidence: 0.85,
+                        keyWords: [], // 可以从AI回复中提取
+                        analysis: result
+                    )
+                    
+                    self.sentimentResult = sentimentResult
+                    analysisHistory.insert(sentimentResult, at: 0)
+                    if analysisHistory.count > 10 {
+                        analysisHistory.removeLast()
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    // 创建错误结果
+                    let errorResult = SentimentResult(
+                        text: inputText,
+                        sentiment: .neutral,
+                        confidence: 0.0,
+                        keyWords: [],
+                        analysis: "分析失败：\(error.localizedDescription)"
+                    )
+                    self.sentimentResult = errorResult
+                }
+                print("情感分析失败: \(error)")
+            }
+        }
+    }
+}
+
+struct KeywordExtractionView: View {
+    @EnvironmentObject var assistant: AIAssistant
+    @EnvironmentObject var keyboardManager: KeyboardManager
+    @StateObject private var textManager = TextGenerationManager()
+    @State private var inputText = ""
+    @State private var keywords: [String] = []
+    @FocusState private var isTextEditorFocused: Bool
+    
+    private let sampleTexts = [
+        "人工智能技术正在快速发展，机器学习和深度学习算法在各个领域都有广泛应用。",
+        "可持续发展是当今世界面临的重要挑战，需要通过技术创新和政策改革来实现。",
+        "移动互联网改变了人们的生活方式，智能手机成为了日常生活中不可缺少的工具。"
+    ]
+    
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                // 输入区域
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("待提取文本")
+                            .font(.headline)
+                        
+                        Spacer()
+                        
+                        if keyboardManager.isKeyboardVisible {
+                            Button(action: {
+                                keyboardManager.dismissKeyboard()
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "keyboard.chevron.compact.down")
+                                    Text("关闭键盘")
+                                }
+                                .font(.caption)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color(.systemGray5))
+                                .foregroundColor(.primary)
+                                .cornerRadius(12)
+                            }
+                        }
+                    }
+                    
+                    TextEditor(text: $inputText)
+                        .frame(minHeight: 120)
+                        .padding(8)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(8)
+                        .focused($isTextEditorFocused)
+                    
+                    // 示例文本
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(sampleTexts, id: \.self) { sample in
+                                Button(sample) {
+                                    inputText = sample
+                                    keyboardManager.dismissKeyboard()
+                                }
+                                .font(.caption)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Color.green.opacity(0.1))
+                                .foregroundColor(.green)
+                                .cornerRadius(16)
+                            }
+                        }
+                        .padding(.horizontal)
+                    }
+                }
+                
+                // 提取按钮
+                Button(action: extractKeywords) {
+                    HStack {
+                        if textManager.isProcessing {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                        }
+                        Text(textManager.isProcessing ? "提取中..." : "提取关键词")
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(inputText.isEmpty ? Color.gray : Color.green)
+                    .foregroundColor(.white)
+                    .cornerRadius(10)
+                }
+                .disabled(inputText.isEmpty || textManager.isProcessing)
                 
                 // 关键词结果
                 if !keywords.isEmpty {
@@ -367,22 +354,31 @@ struct KeywordExtractionView: View {
                             
                             Spacer()
                             
-                            Text("\(keywords.count)个")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                            Button("复制全部") {
+                                UIPasteboard.general.string = keywords.joined(separator: ", ")
+                            }
+                            .font(.caption)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.green.opacity(0.1))
+                            .foregroundColor(.green)
+                            .cornerRadius(16)
                         }
                         
-                        // 关键词标签云
-                        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 8) {
+                        LazyVGrid(columns: [
+                            GridItem(.adaptive(minimum: 80))
+                        ], spacing: 8) {
                             ForEach(keywords, id: \.self) { keyword in
                                 KeywordTag(keyword: keyword)
                             }
                         }
                     }
                     .padding()
-                    .background(Color.blue.opacity(0.1))
-                    .cornerRadius(12)
+                    .background(Color.green.opacity(0.1))
+                    .cornerRadius(8)
                 }
+                
+                Spacer(minLength: 50)
             }
             .padding()
         }
@@ -390,18 +386,27 @@ struct KeywordExtractionView: View {
     }
     
     private func extractKeywords() {
-        isExtracting = true
+        guard !inputText.isEmpty else { return }
         
         Task {
-            if let result = await assistant.extractKeywords(from: inputText) {
+            do {
+                // 使用 TextGenerationManager 的关键词提取
+                let result = try await textManager.extractKeywords(text: inputText)
+                
                 await MainActor.run {
-                    keywords = result
-                    isExtracting = false
+                    // 简单解析关键词（应该从AI回复中提取）
+                    let extractedKeywords = result.components(separatedBy: CharacterSet(charactersIn: ",，\n"))
+                        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                        .filter { !$0.isEmpty }
+                        .prefix(10) // 限制最多10个关键词
+                    
+                    keywords = Array(extractedKeywords)
                 }
-            } else {
+            } catch {
                 await MainActor.run {
-                    isExtracting = false
+                    keywords = ["提取失败：\(error.localizedDescription)"]
                 }
+                print("关键词提取失败: \(error)")
             }
         }
     }
@@ -421,14 +426,12 @@ struct KeywordTag: View {
     }
 }
 
-
-
 struct TextClassificationView: View {
     @EnvironmentObject var assistant: AIAssistant
     @EnvironmentObject var keyboardManager: KeyboardManager
+    @StateObject private var textManager = TextGenerationManager()
     @State private var inputText = ""
     @State private var classification = ""
-    @State private var isClassifying = false
     @FocusState private var isTextEditorFocused: Bool
     
     private let categories = ["新闻", "科技", "娱乐", "体育", "财经", "教育", "健康", "旅游"]
@@ -448,7 +451,6 @@ struct TextClassificationView: View {
                         if keyboardManager.isKeyboardVisible {
                             Button(action: {
                                 keyboardManager.dismissKeyboard()
-                                isTextEditorFocused = false
                             }) {
                                 HStack(spacing: 4) {
                                     Image(systemName: "keyboard.chevron.compact.down")
@@ -475,11 +477,11 @@ struct TextClassificationView: View {
                 // 分类按钮
                 Button(action: classifyText) {
                     HStack {
-                        if isClassifying {
+                        if textManager.isProcessing {
                             ProgressView()
                                 .scaleEffect(0.8)
                         }
-                        Text(isClassifying ? "分类中..." : "文本分类")
+                        Text(textManager.isProcessing ? "分类中..." : "开始分类")
                     }
                     .frame(maxWidth: .infinity)
                     .padding()
@@ -487,42 +489,23 @@ struct TextClassificationView: View {
                     .foregroundColor(.white)
                     .cornerRadius(10)
                 }
-                .disabled(inputText.isEmpty || isClassifying)
+                .disabled(inputText.isEmpty || textManager.isProcessing)
                 
                 // 分类结果
                 if !classification.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 8) {
                         Text("分类结果")
                             .font(.headline)
                         
                         Text(classification)
-                            .font(.title2)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.purple)
                             .padding()
-                            .frame(maxWidth: .infinity)
                             .background(Color.purple.opacity(0.1))
-                            .cornerRadius(12)
+                            .cornerRadius(8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
                 
-                // 预定义分类
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("常见分类")
-                        .font(.headline)
-                    
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 8) {
-                        ForEach(categories, id: \.self) { category in
-                            Text(category)
-                                .font(.caption)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background(Color.purple.opacity(0.1))
-                                .foregroundColor(.purple)
-                                .cornerRadius(16)
-                        }
-                    }
-                }
+                Spacer(minLength: 50)
             }
             .padding()
         }
@@ -530,38 +513,27 @@ struct TextClassificationView: View {
     }
     
     private func classifyText() {
-        isClassifying = true
-        
-        let prompt = """
-        请将以下文本分类到最合适的类别中，从这些选项中选择：\(categories.joined(separator: "、"))
-        
-        文本：\(inputText)
-        
-        分类：
-        """
+        guard !inputText.isEmpty else { return }
         
         Task {
-            if let result = await assistant.generateText(
-                prompt: prompt,
-                maxTokens: 20,
-                temperature: 0.1
-            ) {
+            do {
+                // 使用 TextGenerationManager 的文本分类
+                let result = try await textManager.classifyText(text: inputText)
+                
                 await MainActor.run {
-                    classification = result.trimmingCharacters(in: .whitespacesAndNewlines)
-                    isClassifying = false
+                    classification = result
                 }
-            } else {
+            } catch {
                 await MainActor.run {
-                    isClassifying = false
+                    classification = "分类失败：\(error.localizedDescription)"
                 }
+                print("文本分类失败: \(error)")
             }
         }
     }
 }
 
 #Preview {
-    NavigationView {
-        TextAnalysisView()
-            .environmentObject(AIAssistant())
-    }
+    TextAnalysisView()
+        .environmentObject(AIAssistant())
 }

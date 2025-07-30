@@ -7,145 +7,142 @@ import FoundationModels
 
 class TextGenerationManager: ObservableObject {
     @Published var isProcessing = false
-    @Published var lastError: String?
-    @Published var lastResult: String?
+    @Published var errorMessage: String?
     
-    // 检查设备是否支持 FoundationModels
-    var isFoundationModelsSupported: Bool {
-        if #available(iOS 18.0, macOS 15.0, *) {
-            return true
+    // MARK: - 设备支持检查
+    
+    /// 检查设备是否支持 FoundationModels
+    private func checkDeviceSupport() async -> Bool {
+        // 检查iOS版本和设备能力
+        if #available(iOS 18.0, *) {
+            return true // 假设iOS 18+支持FoundationModels
         }
         return false
     }
     
-    // MARK: - 公共方法
+    // MARK: - 核心文本生成方法
     
     /// 使用自定义指令和提示词生成文本 (使用苹果官方 FoundationModels)
     /// - Parameters:
-    ///   - instructions: 指令文本，用于指导AI如何响应
-    ///   - prompt: 用户输入的提示词
-    /// - Returns: 生成的文本内容
+    ///   - instructions: 指令
+    ///   - prompt: 用户提示词
+    /// - Returns: 生成的文本
     func generateText(instructions: String, prompt: String) async throws -> String {
-        // 检查设备支持
-        guard isFoundationModelsSupported else {
-            throw FoundationModelError.unsupportedOperation
-        }
-        
         await MainActor.run {
             self.isProcessing = true
-            self.lastError = nil
+            self.errorMessage = nil
+        }
+        
+        defer {
+            Task { @MainActor in
+                self.isProcessing = false
+            }
+        }
+        
+        // 检查设备支持
+        guard await checkDeviceSupport() else {
+            throw FoundationModelError.unsupportedOperation
         }
         
         do {
             // 使用苹果官方 FoundationModels API
             let session = LanguageModelSession(instructions: instructions)
             let response = try await session.respond(to: prompt)
-            
-            await MainActor.run {
-                self.isProcessing = false
-                self.lastResult = response.content
-            }
-            
             return response.content
         } catch {
             await MainActor.run {
-                self.isProcessing = false
-                self.lastError = "文本生成失败: \(error.localizedDescription)"
+                self.errorMessage = "生成失败: \(error.localizedDescription)"
             }
-            throw error
+            print("Text generation failed: \(error)")
+            throw FoundationModelError.processingError
         }
     }
     
-    /// 生成相关主题建议 (使用苹果官方 FoundationModels)
-    /// - Parameter topic: 主题
-    /// - Returns: 相关主题建议
-    func generateRelatedTopics(for topic: String) async throws -> String {
+    // MARK: - 专用功能方法
+    
+    /// 生成创意写作内容
+    /// - Parameter topic: 写作主题
+    /// - Returns: 生成的创意内容
+    func generateCreativeWriting(topic: String) async throws -> String {
         let instructions = """
-            Suggest five related topics. Keep them concise (three to seven words) and make sure they \
-            build naturally from the person's topic.
+            你是一位富有创意的作家。请根据给定的主题创作一篇富有想象力和创意的短篇内容。
+            要求：
+            1. 内容生动有趣
+            2. 语言优美流畅
+            3. 具有一定的深度和意义
+            4. 字数控制在200-300字
             """
         
         return try await generateText(instructions: instructions, prompt: topic)
     }
     
-    /// 生成创意内容 (使用苹果官方 FoundationModels)
-    /// - Parameters:
-    ///   - prompt: 创意提示
-    ///   - style: 创意风格
-    /// - Returns: 创意内容
-    func generateCreativeContent(prompt: String, style: String = "创意") async throws -> String {
+    /// 生成文本摘要
+    /// - Parameter text: 要摘要的文本
+    /// - Returns: 生成的摘要
+    func generateSummary(text: String) async throws -> String {
         let instructions = """
-            你是一个富有创意的写作助手。请根据用户的提示生成有趣、原创且富有想象力的内容。
-            风格要求：\(style)
-            请确保内容积极向上，富有创意。
-            """
-        
-        return try await generateText(instructions: instructions, prompt: prompt)
-    }
-    
-    /// 生成技术解释 (使用苹果官方 FoundationModels)
-    /// - Parameter concept: 技术概念
-    /// - Returns: 技术解释
-    func generateTechnicalExplanation(for concept: String) async throws -> String {
-        let instructions = """
-            你是一个技术专家。请用简洁明了的语言解释技术概念，确保内容准确且易于理解。
-            请包含：
-            1. 基本定义
-            2. 主要特点
-            3. 实际应用
-            4. 简单示例（如果适用）
-            """
-        
-        return try await generateText(instructions: instructions, prompt: concept)
-    }
-    
-    /// 生成对话回复 (使用苹果官方 FoundationModels)
-    /// - Parameters:
-    ///   - message: 用户消息
-    ///   - context: 对话上下文
-    /// - Returns: 对话回复
-    func generateConversationReply(to message: String, context: String = "") async throws -> String {
-        let instructions = """
-            你是一个友好、有帮助的AI助手。请根据用户的消息生成自然、有用的回复。
-            \(context.isEmpty ? "" : "对话上下文：\(context)")
-            请保持回复简洁、相关且有帮助。
-            """
-        
-        return try await generateText(instructions: instructions, prompt: message)
-    }
-    
-    /// 生成文本摘要 (使用苹果官方 FoundationModels)
-    /// - Parameters:
-    ///   - text: 要摘要的文本
-    ///   - maxLength: 最大长度
-    /// - Returns: 文本摘要
-    func generateSummary(for text: String, maxLength: Int = 100) async throws -> String {
-        let instructions = """
-            请将以下文本总结为不超过\(maxLength)字的简洁摘要。
-            摘要应该：
-            1. 保留主要信息
-            2. 语言简洁明了
-            3. 逻辑清晰
+            请为以下文本生成一个简洁准确的摘要。
+            要求：
+            1. 提取主要观点和关键信息
+            2. 保持客观中性的语调
+            3. 摘要长度不超过原文的1/3
+            4. 确保摘要完整表达原文核心内容
             """
         
         return try await generateText(instructions: instructions, prompt: text)
     }
     
-    /// 生成翻译 (使用苹果官方 FoundationModels)
+    /// 生成文本续写
+    /// - Parameter text: 要续写的文本开头
+    /// - Returns: 续写的内容
+    func generateCompletion(text: String) async throws -> String {
+        let instructions = """
+            请为以下文本提供自然流畅的续写。
+            要求：
+            1. 保持与原文相同的风格和语调
+            2. 逻辑连贯，内容合理
+            3. 续写长度适中（100-200字）
+            4. 确保内容积极正面
+            """
+        
+        return try await generateText(instructions: instructions, prompt: text)
+    }
+    
+    /// 翻译文本 (使用苹果官方 FoundationModels)
     /// - Parameters:
     ///   - text: 要翻译的文本
     ///   - targetLanguage: 目标语言
     /// - Returns: 翻译结果
     func generateTranslation(text: String, to targetLanguage: String) async throws -> String {
-        let instructions = """
-            请将以下文本翻译为\(targetLanguage)。
-            翻译要求：
-            1. 准确传达原意
-            2. 语言自然流畅
-            3. 符合目标语言的表达习惯
-            """
+        await MainActor.run {
+            self.isProcessing = true
+            self.errorMessage = nil
+        }
         
-        return try await generateText(instructions: instructions, prompt: text)
+        defer {
+            Task { @MainActor in
+                self.isProcessing = false
+            }
+        }
+        
+        // 检查设备支持
+        guard await checkDeviceSupport() else {
+            throw FoundationModelError.unsupportedOperation
+        }
+        
+        do {
+            // 使用苹果官方 FoundationModels 进行翻译
+            let translationInstructions = "You are a professional translator. Translate the following text to \(targetLanguage). Only provide the translation, no explanations or additional text."
+            let session = LanguageModelSession(instructions: translationInstructions)
+            let response = try await session.respond(to: text)
+            return response.content
+        } catch {
+            await MainActor.run {
+                self.errorMessage = "翻译失败: \(error.localizedDescription)"
+            }
+            print("Translation failed: \(error)")
+            throw FoundationModelError.processingError
+        }
     }
     
     /// 生成文本改写 (使用苹果官方 FoundationModels)
@@ -159,145 +156,86 @@ class TextGenerationManager: ObservableObject {
             改写要求：
             1. 保持原意不变
             2. 调整语言风格和表达方式
-            3. 确保语言自然流畅
+            3. 确保改写后的文本自然流畅
+            4. 适合目标风格的语境
             """
         
         return try await generateText(instructions: instructions, prompt: text)
     }
     
-    /// 测试苹果官方 FoundationModels API 的示例方法
-    /// 按照您提供的示例实现真正的AI调用
+    /// 生成对话回复
+    /// - Parameter message: 用户消息
+    /// - Returns: AI回复
+    func generateChatResponse(message: String) async throws -> String {
+        let instructions = """
+            你是一个友好、有帮助的AI助手。请根据用户的消息提供有用、准确的回复。
+            要求：
+            1. 回复要友好和有帮助
+            2. 提供准确的信息
+            3. 保持适当的对话长度
+            4. 根据用户问题的性质调整回复风格
+            """
+        
+        return try await generateText(instructions: instructions, prompt: message)
+    }
+    
+    /// 分析文本情感
+    /// - Parameter text: 要分析的文本
+    /// - Returns: 情感分析结果
+    func analyzeSentiment(text: String) async throws -> String {
+        let instructions = """
+            请分析以下文本的情感倾向。
+            要求：
+            1. 判断情感类型：积极、消极、中性
+            2. 提供情感强度评分（1-10）
+            3. 解释判断理由
+            4. 提取关键情感词汇
+            """
+        
+        return try await generateText(instructions: instructions, prompt: text)
+    }
+    
+    /// 提取关键词
+    /// - Parameter text: 要分析的文本
+    /// - Returns: 关键词列表
+    func extractKeywords(text: String) async throws -> String {
+        let instructions = """
+            请从以下文本中提取关键词。
+            要求：
+            1. 提取5-10个最重要的关键词
+            2. 按重要性排序
+            3. 提供每个关键词的重要性说明
+            4. 关键词应该包括名词、动词和形容词
+            """
+        
+        return try await generateText(instructions: instructions, prompt: text)
+    }
+    
+    /// 分类文本
+    /// - Parameter text: 要分类的文本
+    /// - Returns: 分类结果
+    func classifyText(text: String) async throws -> String {
+        let instructions = """
+            请对以下文本进行分类。
+            要求：
+            1. 确定文本的主要类别（如：技术、教育、娱乐、新闻等）
+            2. 提供分类的置信度
+            3. 解释分类的理由
+            4. 如果适用，提供次要分类
+            """
+        
+        return try await generateText(instructions: instructions, prompt: text)
+    }
+    
+    // MARK: - 测试方法
+    
+    /// 测试苹果官方 FoundationModels API
     func testAppleFoundationModels() async throws -> String {
-        await MainActor.run {
-            self.isProcessing = true
-            self.lastError = nil
-        }
+        let instructions = "You are a helpful assistant. Please respond to user queries in a helpful and informative manner."
+        let prompt = "Hello, how are you today?"
         
-        do {
-            // 完全按照苹果官方示例的调用方式
-            let instructions = """
-                Suggest five related topics. Keep them concise (three to seven words) and make sure they \
-                build naturally from the person's topic.
-                """
-
-            let session = LanguageModelSession(instructions: instructions)
-
-            let prompt = "Making homemade bread"
-            let response = try await session.respond(to: prompt)
-            
-            await MainActor.run {
-                self.isProcessing = false
-                self.lastResult = response.content
-            }
-            
-            return response.content
-        } catch {
-            await MainActor.run {
-                self.isProcessing = false
-                self.lastError = "Apple FoundationModels 调用失败: \(error.localizedDescription)"
-            }
-            throw error
-        }
-    }
-    
-    // MARK: - 便利方法
-    
-    /// 清除错误信息
-    func clearError() {
-        lastError = nil
-    }
-    
-    /// 清除结果
-    func clearResult() {
-        lastResult = nil
-    }
-    
-    /// 清除所有状态
-    func clearAll() {
-        lastError = nil
-        lastResult = nil
-    }
-}
-
-// MARK: - 预定义指令模板
-
-extension TextGenerationManager {
-    
-    /// 预定义的指令模板
-    enum InstructionTemplate {
-        case relatedTopics
-        case creative(style: String)
-        case technical
-        case conversation(context: String)
-        case summary(maxLength: Int)
-        case translation(targetLanguage: String)
-        case rewrite(style: String)
-        case custom(instructions: String)
-        
-        var instructions: String {
-            switch self {
-            case .relatedTopics:
-                return """
-                    Suggest five related topics. Keep them concise (three to seven words) and make sure they \
-                    build naturally from the person's topic.
-                    """
-            case .creative(let style):
-                return """
-                    你是一个富有创意的写作助手。请根据用户的提示生成有趣、原创且富有想象力的内容。
-                    风格要求：\(style)
-                    请确保内容积极向上，富有创意。
-                    """
-            case .technical:
-                return """
-                    你是一个技术专家。请用简洁明了的语言解释技术概念，确保内容准确且易于理解。
-                    请包含：
-                    1. 基本定义
-                    2. 主要特点
-                    3. 实际应用
-                    4. 简单示例（如果适用）
-                    """
-            case .conversation(let context):
-                return """
-                    你是一个友好、有帮助的AI助手。请根据用户的消息生成自然、有用的回复。
-                    \(context.isEmpty ? "" : "对话上下文：\(context)")
-                    请保持回复简洁、相关且有帮助。
-                    """
-            case .summary(let maxLength):
-                return """
-                    请将以下文本总结为不超过\(maxLength)字的简洁摘要。
-                    摘要应该：
-                    1. 保留主要信息
-                    2. 语言简洁明了
-                    3. 逻辑清晰
-                    """
-            case .translation(let targetLanguage):
-                return """
-                    请将以下文本翻译为\(targetLanguage)。
-                    翻译要求：
-                    1. 准确传达原意
-                    2. 语言自然流畅
-                    3. 符合目标语言的表达习惯
-                    """
-            case .rewrite(let style):
-                return """
-                    请将以下文本改写为\(style)风格。
-                    改写要求：
-                    1. 保持原意不变
-                    2. 调整语言风格和表达方式
-                    3. 确保语言自然流畅
-                    """
-            case .custom(let instructions):
-                return instructions
-            }
-        }
-    }
-    
-    /// 使用预定义模板生成文本
-    /// - Parameters:
-    ///   - template: 指令模板
-    ///   - prompt: 用户提示
-    /// - Returns: 生成的文本
-    func generateText(using template: InstructionTemplate, prompt: String) async throws -> String {
-        return try await generateText(instructions: template.instructions, prompt: prompt)
+        let session = LanguageModelSession(instructions: instructions)
+        let response = try await session.respond(to: prompt)
+        return response.content
     }
 }

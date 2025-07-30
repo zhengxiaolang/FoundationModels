@@ -44,6 +44,8 @@ struct TranslationView: View {
                                 ForEach(LanguageOption.allCases, id: \.self) { language in
                                     Button(language.displayName) {
                                         selectedTargetLanguage = language
+                                        // 切换语言时清除之前的翻译结果
+                                        clearTranslationResult()
                                     }
                                 }
                             } label: {
@@ -98,6 +100,12 @@ struct TranslationView: View {
                             .padding(12)
                             .background(Color(.systemGray6))
                             .cornerRadius(12)
+                            .onChange(of: inputText) { oldValue, newValue in
+                                // 输入内容变化时清除之前的翻译结果
+                                if !newValue.isEmpty && newValue != oldValue && showResult {
+                                    clearTranslationResult()
+                                }
+                            }
                             .overlay(
                                 RoundedRectangle(cornerRadius: 12)
                                     .stroke(Color.blue.opacity(0.3), lineWidth: 1)
@@ -234,10 +242,21 @@ struct TranslationView: View {
         .environmentObject(keyboardManager)
     }
     
+    private func clearTranslationResult() {
+        withAnimation(.easeOut(duration: 0.3)) {
+            showResult = false
+        }
+        translatedText = ""
+    }
+    
     private func translateText() {
         guard !inputText.isEmpty else { return }
-
+        guard !textManager.isProcessing else { return } // 防止重复点击
+        
         keyboardManager.dismissKeyboard()
+        
+        // 开始翻译前先清除之前的结果
+        clearTranslationResult()
 
         Task {
             do {
@@ -256,7 +275,9 @@ struct TranslationView: View {
             } catch {
                 await MainActor.run {
                     translatedText = "翻译失败：\(error.localizedDescription)"
-                    showResult = true
+                    withAnimation(.easeInOut(duration: 0.5)) {
+                        showResult = true
+                    }
                 }
                 print("翻译失败: \(error)")
             }
