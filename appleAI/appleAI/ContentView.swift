@@ -349,6 +349,7 @@ struct SplashScreenView: View {
 
 struct SimpleTestView: View {
     @EnvironmentObject var assistant: AIAssistant
+    @StateObject private var textManager = TextGenerationManager()
     @State private var testResult = ""
 
     var body: some View {
@@ -359,7 +360,7 @@ struct SimpleTestView: View {
             Button("测试文本生成") {
                 testTextGeneration()
             }
-            .disabled(!assistant.isModelLoaded || assistant.isProcessing)
+            .disabled(!assistant.isModelLoaded || assistant.isProcessing || textManager.isProcessing)
             .buttonStyle(.borderedProminent)
 
             if !testResult.isEmpty {
@@ -381,29 +382,27 @@ struct SimpleTestView: View {
     private func testTextGeneration() {
         Task {
             do {
-                try await generateText()
+                let result = try await generateText()
+                await MainActor.run {
+                    testResult = result
+                }
             } catch {
                 print("Error: \(error)")
+                await MainActor.run {
+                    testResult = "生成失败: \(error.localizedDescription)"
+                }
             }
         }
     }
-    
-    func generateText() async throws {
+
+    func generateText() async throws -> String {
         let instructions = """
             Suggest five related topics. Keep them concise (three to seven words) and make sure they \
             build naturally from the person's topic.
             """
 
-
-        let session = LanguageModelSession(instructions: instructions)
-
-
         let prompt = "Making homemade bread"
-        let response = try await session.respond(to: prompt)
-        await MainActor.run {
-            testResult = response.content
-        }
-        print(response)
+        return try await textManager.generateText(instructions: instructions, prompt: prompt)
     }
 }
 

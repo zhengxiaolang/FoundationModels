@@ -771,12 +771,50 @@ enum WritingStyle: String, CaseIterable {
     case academic = "学术"
     case creative = "创意"
     case business = "商务"
-    
+
     var description: String {
         return self.rawValue
     }
-    
+
     var displayName: String {
         return self.rawValue
     }
+}
+
+// MARK: - LanguageModelSession 实现
+
+class LanguageModelSession {
+    private let instructions: String
+    private let model: FoundationLanguageModel
+
+    init(instructions: String) {
+        self.instructions = instructions
+        self.model = FoundationLanguageModel()
+    }
+
+    func respond(to prompt: String) async throws -> LanguageModelSessionResponse {
+        // 将 instructions 和 prompt 结合
+        let combinedPrompt = """
+        \(instructions)
+
+        用户输入: \(prompt)
+
+        请根据上述指令回应:
+        """
+
+        let request = LanguageModelRequest(
+            prompt: combinedPrompt,
+            maxTokens: 200,
+            temperature: 0.7,
+            taskType: .textGeneration
+        )
+
+        let response = try await model.generate(request)
+
+        return LanguageModelSessionResponse(content: response.text)
+    }
+}
+
+struct LanguageModelSessionResponse {
+    let content: String
 }
