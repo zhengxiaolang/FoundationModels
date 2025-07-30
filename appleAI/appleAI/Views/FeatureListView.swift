@@ -79,6 +79,8 @@ struct FeatureListView: View {
             switch type {
             case .textGeneration:
                 TextGenerationView()
+            case .translation:
+                TranslationView()
             case .textAnalysis:
                 TextAnalysisView()
             case .chat:
@@ -89,6 +91,16 @@ struct FeatureListView: View {
                 SmartNotesView()
             case .debugTools:
                 DebugToolsView()
+            case .realModelTest:
+                RealModelTestView()
+            case .realAITest:
+                RealAITestView()
+            case .compilationTest:
+                CompilationTestView()
+            case .fixVerification:
+                FixVerificationView()
+            case .simpleFeatures:
+                SimpleFeatureListView()
             }
         }
         .environmentObject(assistant)

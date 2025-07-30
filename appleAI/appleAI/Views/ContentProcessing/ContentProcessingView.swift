@@ -50,146 +50,155 @@ struct TextRewritingView: View {
     
     var body: some View {
         VStack(spacing: 16) {
-            // 输入区域
-            VStack(alignment: .leading, spacing: 8) {
-                Text("原文内容")
-                    .font(.headline)
-                
-                TextEditor(text: $inputText)
-                    .frame(minHeight: 100)
-                    .padding(8)
-                    .background(Color(.systemGray6))
-                    .cornerRadius(8)
-                
-                // 示例文本
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(sampleTexts, id: \.self) { sample in
-                            Button(sample) {
-                                inputText = sample
-                            }
-                            .font(.caption)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(Color.orange.opacity(0.1))
-                            .foregroundColor(.orange)
-                            .cornerRadius(16)
-                        }
-                    }
-                    .padding(.horizontal)
-                }
-            }
+            inputSection
+            styleSelectionSection
+            rewriteButton
+            resultSection
+            Spacer()
+        }
+        .padding()
+    }
+    
+    private var inputSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("原文内容")
+                .font(.headline)
             
-            // 风格选择
-            VStack(alignment: .leading, spacing: 8) {
-                Text("改写风格")
-                    .font(.headline)
-                
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
-                        ForEach(WritingStyle.allCases, id: \.self) { style in
-                            Button(action: {
-                                selectedStyle = style
-                            }) {
-                                VStack(spacing: 4) {
-                                    Text(style.displayName)
-                                        .font(.caption)
-                                        .fontWeight(.medium)
-                                    
-                                    Text(style.description)
-                                        .font(.caption2)
-                                        .foregroundColor(.secondary)
-                                }
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .background(
-                                    selectedStyle == style ? Color.orange : Color(.systemGray6)
-                                )
-                                .foregroundColor(
-                                    selectedStyle == style ? .white : .primary
-                                )
-                                .cornerRadius(8)
-                            }
-                        }
-                    }
-                    .padding(.horizontal)
-                }
-            }
+            TextEditor(text: $inputText)
+                .frame(minHeight: 100)
+                .padding(8)
+                .background(Color(.systemGray6))
+                .cornerRadius(8)
             
-            // 改写按钮
-            Button(action: rewriteText) {
-                HStack {
-                    if isRewriting {
-                        ProgressView()
-                            .scaleEffect(0.8)
-                    }
-                    Text(isRewriting ? "改写中..." : "开始改写")
-                }
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(inputText.isEmpty ? Color.gray : Color.orange)
-                .foregroundColor(.white)
-                .cornerRadius(10)
-            }
-            .disabled(inputText.isEmpty || isRewriting)
-            
-            // 改写结果
-            if !rewrittenText.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("改写结果")
-                            .font(.headline)
-                        
-                        Spacer()
-                        
-                        Button("复制") {
-                            UIPasteboard.general.string = rewrittenText
+            // 示例文本
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(sampleTexts, id: \.self) { sample in
+                        Button(sample) {
+                            inputText = sample
                         }
                         .font(.caption)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
-                        .background(Color.green.opacity(0.1))
-                        .foregroundColor(.green)
+                        .background(Color.orange.opacity(0.1))
+                        .foregroundColor(.orange)
                         .cornerRadius(16)
                     }
-                    
-                    ScrollView {
-                        VStack(spacing: 12) {
-                            // 原文
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("原文")
+                }
+                .padding(.horizontal)
+            }
+        }
+    }
+    
+    private var styleSelectionSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("改写风格")
+                .font(.headline)
+            
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(WritingStyle.allCases, id: \.self) { style in
+                        Button(action: {
+                            selectedStyle = style
+                        }) {
+                            VStack(spacing: 4) {
+                                Text(style.displayName)
                                     .font(.caption)
-                                    .foregroundColor(.secondary)
+                                    .fontWeight(.medium)
                                 
-                                Text(inputText)
-                                    .padding()
-                                    .background(Color(.systemGray6))
-                                    .cornerRadius(8)
-                            }
-                            
-                            Image(systemName: "arrow.down")
-                                .foregroundColor(.orange)
-                            
-                            // 改写后
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("改写后 (\(selectedStyle.displayName))")
-                                    .font(.caption)
+                                Text(style.description)
+                                    .font(.caption2)
                                     .foregroundColor(.secondary)
-                                
-                                Text(rewrittenText)
-                                    .padding()
-                                    .background(Color.orange.opacity(0.1))
-                                    .cornerRadius(8)
                             }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(
+                                selectedStyle == style ? Color.orange : Color(.systemGray6)
+                            )
+                            .foregroundColor(
+                                selectedStyle == style ? .white : .primary
+                            )
+                            .cornerRadius(8)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
+                .padding(.horizontal)
             }
-            
-            Spacer()
         }
-        .padding()
+    }
+    
+    private var rewriteButton: some View {
+        Button(action: rewriteText) {
+            HStack {
+                if isRewriting {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                }
+                Text(isRewriting ? "改写中..." : "开始改写")
+            }
+            .frame(maxWidth: .infinity)
+            .padding()
+            .background(inputText.isEmpty ? Color.gray : Color.orange)
+            .foregroundColor(.white)
+            .cornerRadius(10)
+        }
+        .disabled(inputText.isEmpty || isRewriting)
+    }
+    
+    @ViewBuilder
+    private var resultSection: some View {
+        if !rewrittenText.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("改写结果")
+                        .font(.headline)
+                    
+                    Spacer()
+                    
+                    Button("复制") {
+                        UIPasteboard.general.string = rewrittenText
+                    }
+                    .font(.caption)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.green.opacity(0.1))
+                    .foregroundColor(.green)
+                    .cornerRadius(16)
+                }
+                
+                ScrollView {
+                    VStack(spacing: 12) {
+                        // 原文
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("原文")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            
+                            Text(inputText)
+                                .padding()
+                                .background(Color(.systemGray6))
+                                .cornerRadius(8)
+                        }
+                        
+                        Image(systemName: "arrow.down")
+                            .foregroundColor(.orange)
+                        
+                        // 改写后
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("改写后 (\(selectedStyle.displayName))")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            
+                            Text(rewrittenText)
+                                .padding()
+                                .background(Color.orange.opacity(0.1))
+                                .cornerRadius(8)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
     }
     
     private func rewriteText() {

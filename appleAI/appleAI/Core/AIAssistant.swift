@@ -412,7 +412,9 @@ class AIAssistant: ObservableObject {
             return SentimentResult(
                 text: text,
                 sentiment: Sentiment(rawValue: sentiment) ?? .neutral,
-                confidence: Double.random(in: 0.7...0.95)
+                confidence: Double.random(in: 0.7...0.95),
+                keyWords: [],
+                analysis: "基于文本内容的情感分析结果"
             )
         } catch {
             await MainActor.run {

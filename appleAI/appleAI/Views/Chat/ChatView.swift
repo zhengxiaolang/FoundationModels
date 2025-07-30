@@ -108,9 +108,8 @@ struct ChatView: View {
         guard !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         
         let userMessage = ChatMessage(
-            text: inputText,
-            isUser: true,
-            timestamp: Date()
+            content: inputText,
+            isUser: true
         )
         
         messages.append(userMessage)
@@ -125,9 +124,8 @@ struct ChatView: View {
                 temperature: 0.7
             ) {
                 let aiMessage = ChatMessage(
-                    text: response,
-                    isUser: false,
-                    timestamp: Date()
+                    content: response,
+                    isUser: false
                 )
                 
                 await MainActor.run {
@@ -137,9 +135,8 @@ struct ChatView: View {
             } else {
                 await MainActor.run {
                     let errorMessage = ChatMessage(
-                        text: "抱歉，我现在无法回应。请稍后再试。",
-                        isUser: false,
-                        timestamp: Date()
+                        content: "抱歉，我现在无法回应。请稍后再试。",
+                        isUser: false
                     )
                     messages.append(errorMessage)
                     isLoading = false
@@ -152,7 +149,7 @@ struct ChatView: View {
         let chatText = messages.map { message in
             let sender = message.isUser ? "用户" : "AI助手"
             let timestamp = DateFormatter.localizedString(from: message.timestamp, dateStyle: .short, timeStyle: .short)
-            return "[\(timestamp)] \(sender): \(message.text)"
+            return "[\(timestamp)] \(sender): \(message.content)"
         }.joined(separator: "\n\n")
         
         UIPasteboard.general.string = chatText
@@ -227,7 +224,7 @@ struct ChatBubbleView: View {
             }
             
             VStack(alignment: message.isUser ? .trailing : .leading, spacing: 4) {
-                Text(message.text)
+                Text(message.content)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
                     .background(

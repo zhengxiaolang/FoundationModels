@@ -301,13 +301,13 @@ struct MetricIndicator: View {
 
 struct LogViewerView: View {
     @StateObject private var debugLogger = DebugLogger.shared
-    @State private var selectedLogLevel: LogLevel?
+    @State private var selectedLogLevel: DebugLogger.LogLevel?
     
     var filteredLogs: [LogEntry] {
         if let level = selectedLogLevel {
-            return debugLogger.logs.filter { $0.level == level }
+            return debugLogger.logEntries.filter { $0.level == level }
         }
-        return debugLogger.logs
+        return debugLogger.logEntries
     }
     
     var body: some View {
@@ -320,7 +320,7 @@ struct LogViewerView: View {
                     }
                     .buttonStyle(FilterButtonStyle(isSelected: selectedLogLevel == nil))
                     
-                    ForEach(LogLevel.allCases, id: \.self) { level in
+                    ForEach(DebugLogger.LogLevel.allCases, id: \.self) { level in
                         Button(level.rawValue) {
                             selectedLogLevel = level
                         }

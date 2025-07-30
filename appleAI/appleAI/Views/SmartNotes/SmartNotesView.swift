@@ -9,12 +9,12 @@ struct SmartNotesView: View {
     
     var filteredNotes: [Note] {
         if searchText.isEmpty {
-            return notes.sorted { $0.updatedAt > $1.updatedAt }
+            return notes.sorted(by: { $0.modifiedDate > $1.modifiedDate })
         } else {
             return notes.filter { note in
                 note.title.localizedCaseInsensitiveContains(searchText) ||
                 note.content.localizedCaseInsensitiveContains(searchText)
-            }.sorted { $0.updatedAt > $1.updatedAt }
+            }.sorted(by: { $0.modifiedDate > $1.modifiedDate })
         }
     }
     
@@ -171,7 +171,7 @@ struct NoteRowView: View {
                 
                 Spacer()
                 
-                Text(DateFormatter.localizedString(from: note.updatedAt, dateStyle: .short, timeStyle: .none))
+                Text(DateFormatter.localizedString(from: note.modifiedDate, dateStyle: .short, timeStyle: .none))
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -284,11 +284,11 @@ struct NoteDetailView: View {
         .navigationTitle("笔记详情")
         .navigationBarTitleDisplayMode(.inline)
         .onChange(of: note.title) { _ in
-            note.updatedAt = Date()
+            note.modifiedDate = Date()
             onUpdate(note)
         }
         .onChange(of: note.content) { _ in
-            note.updatedAt = Date()
+            note.modifiedDate = Date()
             onUpdate(note)
         }
     }
@@ -411,7 +411,7 @@ struct AIToolsBar: View {
             if let summary = await assistant.summarizeText(note.content) {
                 await MainActor.run {
                     note.summary = summary
-                    note.updatedAt = Date()
+                    note.modifiedDate = Date()
                     onUpdate(note)
                     isAnalyzing = false
                 }
@@ -429,7 +429,7 @@ struct AIToolsBar: View {
             if let result = await assistant.analyzeSentiment(text: note.content) {
                 await MainActor.run {
                     note.sentiment = result.sentiment
-                    note.updatedAt = Date()
+                    note.modifiedDate = Date()
                     onUpdate(note)
                     isAnalyzing = false
                 }
@@ -447,7 +447,7 @@ struct AIToolsBar: View {
             if let keywords = await assistant.extractKeywords(from: note.content) {
                 await MainActor.run {
                     note.keywords = keywords
-                    note.updatedAt = Date()
+                    note.modifiedDate = Date()
                     onUpdate(note)
                     isAnalyzing = false
                 }
