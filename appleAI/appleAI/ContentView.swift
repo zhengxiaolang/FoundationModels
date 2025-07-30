@@ -1,5 +1,7 @@
 import SwiftUI
 
+import FoundationModels
+
 enum ViewMode {
     case basicTest
     case realModelTest
@@ -378,12 +380,30 @@ struct SimpleTestView: View {
 
     private func testTextGeneration() {
         Task {
-            if let result = await assistant.generateText(prompt: "测试提示") {
-                await MainActor.run {
-                    testResult = result
-                }
+            do {
+                try await generateText()
+            } catch {
+                print("Error: \(error)")
             }
         }
+    }
+    
+    func generateText() async throws {
+        let instructions = """
+            Suggest five related topics. Keep them concise (three to seven words) and make sure they \
+            build naturally from the person's topic.
+            """
+
+
+        let session = LanguageModelSession(instructions: instructions)
+
+
+        let prompt = "Making homemade bread"
+        let response = try await session.respond(to: prompt)
+        await MainActor.run {
+            testResult = response.content
+        }
+        print(response)
     }
 }
 
