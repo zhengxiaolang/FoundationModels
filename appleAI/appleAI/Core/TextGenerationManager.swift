@@ -132,9 +132,19 @@ class TextGenerationManager: ObservableObject {
         
         do {
             // 使用苹果官方 FoundationModels 进行翻译
-            let translationInstructions = "You are a professional translator. Translate the following text to \(targetLanguage). Only provide the translation, no explanations or additional text."
+            // 根据目标语言生成更准确的翻译指令
+            let translationInstructions = generateTranslationInstructions(for: targetLanguage)
+            
+            // 调试输出
+            print("🌐 翻译调试信息:")
+            print("目标语言: '\(targetLanguage)'")
+            print("翻译指令: '\(translationInstructions)'")
+            
             let session = LanguageModelSession(instructions: translationInstructions)
             let response = try await session.respond(to: text)
+            
+            print("翻译结果: '\(response.content)'")
+            
             return response.content
         } catch {
             await MainActor.run {
@@ -142,6 +152,32 @@ class TextGenerationManager: ObservableObject {
             }
             print("Translation failed: \(error)")
             throw FoundationModelError.processingError
+        }
+    }
+    
+    /// 根据目标语言生成翻译指令
+    /// - Parameter targetLanguage: 目标语言显示名称
+    /// - Returns: 翻译指令
+    private func generateTranslationInstructions(for targetLanguage: String) -> String {
+        // 根据不同的目标语言生成相应的翻译指令
+        switch targetLanguage {
+        case "中文":
+            return "You are a professional translator. Translate the following text to Chinese (Simplified). Only provide the translation, no explanations or additional text."
+        case "English":
+            return "You are a professional translator. Translate the following text to English. Only provide the translation, no explanations or additional text."
+        case "日本語":
+            return "You are a professional translator. Translate the following text to Japanese. Only provide the translation, no explanations or additional text."
+        case "한국어":
+            return "You are a professional translator. Translate the following text to Korean. Only provide the translation, no explanations or additional text."
+        case "Français":
+            return "You are a professional translator. Translate the following text to French. Only provide the translation, no explanations or additional text."
+        case "Deutsch":
+            return "You are a professional translator. Translate the following text to German. Only provide the translation, no explanations or additional text."
+        case "Español":
+            return "You are a professional translator. Translate the following text to Spanish. Only provide the translation, no explanations or additional text."
+        default:
+            // 默认使用目标语言的原始名称
+            return "You are a professional translator. Translate the following text to \(targetLanguage). Only provide the translation, no explanations or additional text."
         }
     }
     

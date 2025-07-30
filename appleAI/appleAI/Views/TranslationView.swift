@@ -261,6 +261,7 @@ struct TranslationView: View {
         Task {
             do {
                 // 使用 TextGenerationManager 的真正AI翻译
+                // 使用显示名称确保翻译指令清晰明确
                 let result = try await textManager.generateTranslation(
                     text: inputText,
                     to: selectedTargetLanguage.displayName
