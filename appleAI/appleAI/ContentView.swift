@@ -165,7 +165,7 @@ struct HomeView: View {
             GridItem(.flexible(), spacing: 16)
         ], spacing: 16) {
             ForEach(features) { feature in
-                FeatureCard(feature: feature)
+                HomeFeatureCard(feature: feature)
             }
         }
 
@@ -174,7 +174,7 @@ struct HomeView: View {
 
 // MARK: - 功能卡片组件
 
-struct FeatureCard: View {
+struct HomeFeatureCard: View {
     let feature: FeatureItem
 
     var body: some View {
