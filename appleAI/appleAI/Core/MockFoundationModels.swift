@@ -303,7 +303,7 @@ struct FoundationLanguageModel {
                 // 真实的处理延迟（模拟网络和计算时间）
                 Thread.sleep(forTimeInterval: Double.random(in: 0.3...1.5))
 
-                // 使用真实的 AI 算法进行文本生成
+                //使用真实的 AI 算法进行文本生成
                 let response = self.performRealTextGeneration(prompt: prompt)
                 continuation.resume(returning: response)
             }

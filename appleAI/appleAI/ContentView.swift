@@ -176,6 +176,7 @@ struct HomeView: View {
 
 struct HomeFeatureCard: View {
     let feature: FeatureItem
+    @EnvironmentObject var assistant: AIAssistant
 
     var body: some View {
         NavigationLink(destination: destinationView) {
@@ -222,16 +223,22 @@ struct HomeFeatureCard: View {
         switch feature.destinationType {
         case .textGeneration:
             TextGenerationView()
+                .environmentObject(assistant)
         case .translation:
             TranslationView()
+                .environmentObject(assistant)
         case .contentProcessing:
             ContentProcessingView()
+                .environmentObject(assistant)
         case .chat:
             ChatView()
+                .environmentObject(assistant)
         case .textAnalysis:
             TextAnalysisView()
+                .environmentObject(assistant)
         case .smartNotes:
             SmartNotesView()
+                .environmentObject(assistant)
         default:
             Text("功能开发中...")
                 .navigationTitle(feature.title)

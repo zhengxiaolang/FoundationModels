@@ -45,26 +45,20 @@ class AIAssistant: ObservableObject {
                 print("⏳ 正在加载模型...")
                 DebugLogger.shared.log("正在加载模型", level: .info)
 
-                // 模拟分阶段加载
-                try await Task.sleep(nanoseconds: 800_000_000) // 0.8秒
 
                 await MainActor.run {
                     self.loadingProgress = "加载 Natural Language 框架..."
                 }
 
-                try await Task.sleep(nanoseconds: 600_000_000) // 0.6秒
 
                 await MainActor.run {
                     self.loadingProgress = "初始化文本处理模型..."
                 }
 
-                try await Task.sleep(nanoseconds: 400_000_000) // 0.4秒
 
                 await MainActor.run {
                     self.loadingProgress = "准备 AI 功能模块..."
                 }
-
-                try await Task.sleep(nanoseconds: 200_000_000) // 0.2秒
 
                 self.model = FoundationLanguageModel()
 

@@ -40,10 +40,14 @@ struct TextAnalysisView: View {
 }
 
 struct SentimentAnalysisView: View {
+    @EnvironmentObject var assistant: AIAssistant
     @EnvironmentObject var keyboardManager: KeyboardManager
     @StateObject private var textManager = TextGenerationManager()
     @State private var inputText = ""
     @State private var analysisResult = ""
+    @State private var sentimentResult: SentimentResult?
+    @State private var analysisHistory: [SentimentResult] = []
+    @State private var isAnalyzing = false
     @FocusState private var isTextEditorFocused: Bool
     
     private let sampleTexts = [

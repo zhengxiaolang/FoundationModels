@@ -16,8 +16,8 @@
             endingColumnNumber = "9223372036854775807"
             startingLineNumber = "41"
             endingLineNumber = "41"
-            landmarkName = "body"
-            landmarkType = "24">
+            landmarkName = "HomeView"
+            landmarkType = "14">
          </BreakpointContent>
       </BreakpointProxy>
       <BreakpointProxy
@@ -34,36 +34,6 @@
             endingLineNumber = "95"
             landmarkName = "testTextGeneration()"
             landmarkType = "7">
-            <Locations>
-               <Location
-                  uuid = "404CDCA5-61FC-4450-B29C-1DD1A8904A53 - ebd8d74e8d11d77a"
-                  shouldBeEnabled = "Yes"
-                  ignoreCount = "0"
-                  continueAfterRunningActions = "No"
-                  symbolName = "(1) suspend resume partial function for appleAI.CompilationTestView.testTextGeneration() async -&gt; ()"
-                  moduleName = "appleAI.debug.dylib"
-                  usesParentBreakpointCondition = "Yes"
-                  urlString = "file:///Users/BrownZheng/Documents/GitHub/FoundationModels/appleAI/appleAI/Views/CompilationTestView.swift"
-                  startingColumnNumber = "9223372036854775807"
-                  endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "95"
-                  endingLineNumber = "95">
-               </Location>
-               <Location
-                  uuid = "404CDCA5-61FC-4450-B29C-1DD1A8904A53 - 7d9ae158e489e8e6"
-                  shouldBeEnabled = "Yes"
-                  ignoreCount = "0"
-                  continueAfterRunningActions = "No"
-                  symbolName = "(2) await resume partial function for appleAI.CompilationTestView.testTextGeneration() async -&gt; ()"
-                  moduleName = "appleAI.debug.dylib"
-                  usesParentBreakpointCondition = "Yes"
-                  urlString = "file:///Users/BrownZheng/Documents/GitHub/FoundationModels/appleAI/appleAI/Views/CompilationTestView.swift"
-                  startingColumnNumber = "9223372036854775807"
-                  endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "95"
-                  endingLineNumber = "95">
-               </Location>
-            </Locations>
          </BreakpointContent>
       </BreakpointProxy>
       <BreakpointProxy
@@ -110,8 +80,8 @@
             endingColumnNumber = "9223372036854775807"
             startingLineNumber = "392"
             endingLineNumber = "392"
-            landmarkName = "generateText()"
-            landmarkType = "7">
+            landmarkName = "body"
+            landmarkType = "24">
          </BreakpointContent>
       </BreakpointProxy>
       <BreakpointProxy
@@ -126,8 +96,8 @@
             endingColumnNumber = "9223372036854775807"
             startingLineNumber = "406"
             endingLineNumber = "406"
-            landmarkName = "generateText()"
-            landmarkType = "7">
+            landmarkName = "SplashScreenView"
+            landmarkType = "14">
          </BreakpointContent>
       </BreakpointProxy>
    </Breakpoints>

@@ -128,7 +128,7 @@ struct TextGenerationDemoView: View {
                 .padding(8)
                 .background(Color(.systemGray6))
                 .cornerRadius(8)
-                .font(.system(size: 14, family: .monospaced))
+                .font(.system(size: 14))
         }
     }
     
