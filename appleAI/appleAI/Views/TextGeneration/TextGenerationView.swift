@@ -55,102 +55,102 @@ struct CreativeWritingView: View {
     ]
     
     var body: some View {
-        VStack(spacing: 16) {
-            // 输入区域
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("创意提示")
-                        .font(.headline)
-                    
-                    Spacer()
-                    
-                    // 键盘关闭按钮
-                    if keyboardManager.isKeyboardVisible {
-                        Button(action: {
-                            keyboardManager.dismissKeyboard()
-                            isTextEditorFocused = false
-                        }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "keyboard.chevron.compact.down")
-                                Text("关闭键盘")
-                            }
-                            .font(.caption)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color(.systemGray5))
-                            .foregroundColor(.primary)
-                            .cornerRadius(12)
-                        }
-                    }
-                }
-                
-                TextEditor(text: $prompt)
-                    .frame(minHeight: 100)
-                    .padding(8)
-                    .background(Color(.systemGray6))
-                    .cornerRadius(8)
-                    .focused($isTextEditorFocused)
-                
-                // 提示建议
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(promptSuggestions, id: \.self) { suggestion in
-                            Button(suggestion) {
-                                prompt = suggestion
-                            }
-                            .font(.caption)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(Color.blue.opacity(0.1))
-                            .foregroundColor(.blue)
-                            .cornerRadius(16)
-                        }
-                    }
-                    .padding(.horizontal)
-                }
-            }
-            
-            // 生成按钮
-            Button(action: generateCreativeText) {
-                HStack {
-                    if textManager.isProcessing {
-                        ProgressView()
-                            .scaleEffect(0.8)
-                    }
-                    Text(textManager.isProcessing ? "生成中..." : "开始创作")
-                }
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(prompt.isEmpty ? Color.gray : Color.blue)
-                .foregroundColor(.white)
-                .cornerRadius(10)
-            }
-            .disabled(prompt.isEmpty || textManager.isProcessing)
-            .onTapGesture {
-                keyboardManager.dismissKeyboard()
-            }
-            
-            // 结果区域
-            if !generatedText.isEmpty {
+        ScrollView {
+            VStack(spacing: 16) {
+                // 输入区域
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
-                        Text("生成结果")
+                        Text("创意提示")
                             .font(.headline)
                         
                         Spacer()
                         
-                        Button("复制") {
-                            UIPasteboard.general.string = generatedText
+                        // 键盘关闭按钮
+                        if keyboardManager.isKeyboardVisible {
+                            Button(action: {
+                                keyboardManager.dismissKeyboard()
+                                isTextEditorFocused = false
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "keyboard.chevron.compact.down")
+                                    Text("关闭键盘")
+                                }
+                                .font(.caption)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color(.systemGray5))
+                                .foregroundColor(.primary)
+                                .cornerRadius(12)
+                            }
                         }
-                        .font(.caption)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color.green.opacity(0.1))
-                        .foregroundColor(.green)
-                        .cornerRadius(16)
                     }
                     
-                    ScrollView {
+                    TextEditor(text: $prompt)
+                        .frame(minHeight: 100)
+                        .padding(8)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(8)
+                        .focused($isTextEditorFocused)
+                    
+                    // 提示建议
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(promptSuggestions, id: \.self) { suggestion in
+                                Button(suggestion) {
+                                    prompt = suggestion
+                                }
+                                .font(.caption)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Color.blue.opacity(0.1))
+                                .foregroundColor(.blue)
+                                .cornerRadius(16)
+                            }
+                        }
+                        .padding(.horizontal)
+                    }
+                }
+                
+                // 生成按钮
+                Button(action: generateCreativeText) {
+                    HStack {
+                        if textManager.isProcessing {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                        }
+                        Text(textManager.isProcessing ? "生成中..." : "开始创作")
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(prompt.isEmpty ? Color.gray : Color.blue)
+                    .foregroundColor(.white)
+                    .cornerRadius(10)
+                }
+                .disabled(prompt.isEmpty || textManager.isProcessing)
+                .onTapGesture {
+                    keyboardManager.dismissKeyboard()
+                }
+                
+                // 结果区域
+                if !generatedText.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("生成结果")
+                                .font(.headline)
+                            
+                            Spacer()
+                            
+                            Button("复制") {
+                                UIPasteboard.general.string = generatedText
+                            }
+                            .font(.caption)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.green.opacity(0.1))
+                            .foregroundColor(.green)
+                            .cornerRadius(16)
+                        }
+                        
                         Text(generatedText)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding()
@@ -163,11 +163,9 @@ struct CreativeWritingView: View {
                     }
                 }
             }
-            
-            Spacer()
+            .padding()
         }
-        .padding()
-        .keyboardAware()
+        .scrollViewKeyboardAware()
     }
     
     private func generateCreativeText() {
@@ -198,113 +196,113 @@ struct TextSummaryView: View {
     @FocusState private var isTextEditorFocused: Bool
     
     var body: some View {
-        VStack(spacing: 16) {
-            // 输入区域
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("原文内容")
-                        .font(.headline)
-                    
-                    Spacer()
-                    
-                    // 键盘关闭按钮
-                    if keyboardManager.isKeyboardVisible {
-                        Button(action: {
-                            keyboardManager.dismissKeyboard()
-                            isTextEditorFocused = false
-                        }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "keyboard.chevron.compact.down")
-                                Text("关闭键盘")
-                            }
-                            .font(.caption)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color(.systemGray5))
-                            .foregroundColor(.primary)
-                            .cornerRadius(12)
-                        }
-                    }
-                }
-                
-                TextEditor(text: $inputText)
-                    .frame(minHeight: 150)
-                    .padding(8)
-                    .background(Color(.systemGray6))
-                    .cornerRadius(8)
-                    .focused($isTextEditorFocused)
-                
-                // 摘要长度设置
-                HStack {
-                    Text("摘要长度: \(maxLength)字")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    
-                    Spacer()
-                    
-                    Slider(value: Binding(
-                        get: { Double(maxLength) },
-                        set: { maxLength = Int($0) }
-                    ), in: 50...300, step: 25)
-                    .frame(width: 120)
-                }
-            }
-            
-            // 生成按钮
-            Button(action: generateSummary) {
-                HStack {
-                    if textManager.isProcessing {
-                        ProgressView()
-                            .scaleEffect(0.8)
-                    }
-                    Text(textManager.isProcessing ? "生成中..." : "生成摘要")
-                }
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(inputText.isEmpty ? Color.gray : Color.blue)
-                .foregroundColor(.white)
-                .cornerRadius(10)
-            }
-            .disabled(inputText.isEmpty || textManager.isProcessing)
-            .onTapGesture {
-                keyboardManager.dismissKeyboard()
-            }
-            
-            // 摘要结果
-            if !summary.isEmpty {
+        ScrollView {
+            VStack(spacing: 16) {
+                // 输入区域
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
-                        Text("智能摘要")
+                        Text("原文内容")
                             .font(.headline)
                         
                         Spacer()
                         
-                        Text("\(summary.count)字")
+                        // 键盘关闭按钮
+                        if keyboardManager.isKeyboardVisible {
+                            Button(action: {
+                                keyboardManager.dismissKeyboard()
+                                isTextEditorFocused = false
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "keyboard.chevron.compact.down")
+                                    Text("关闭键盘")
+                                }
+                                .font(.caption)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color(.systemGray5))
+                                .foregroundColor(.primary)
+                                .cornerRadius(12)
+                            }
+                        }
+                    }
+                    
+                    TextEditor(text: $inputText)
+                        .frame(minHeight: 150)
+                        .padding(8)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(8)
+                        .focused($isTextEditorFocused)
+                    
+                    // 摘要长度设置
+                    HStack {
+                        Text("摘要长度: \(maxLength)字")
                             .font(.caption)
                             .foregroundColor(.secondary)
                         
-                        Button("复制") {
-                            UIPasteboard.general.string = summary
-                        }
-                        .font(.caption)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color.green.opacity(0.1))
-                        .foregroundColor(.green)
-                        .cornerRadius(16)
+                        Spacer()
+                        
+                        Slider(value: Binding(
+                            get: { Double(maxLength) },
+                            set: { maxLength = Int($0) }
+                        ), in: 50...300, step: 25)
+                        .frame(width: 120)
                     }
-                    
-                    Text(summary)
-                        .padding()
-                        .background(Color.blue.opacity(0.1))
-                        .cornerRadius(8)
+                }
+                
+                // 生成按钮
+                Button(action: generateSummary) {
+                    HStack {
+                        if textManager.isProcessing {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                        }
+                        Text(textManager.isProcessing ? "生成中..." : "生成摘要")
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(inputText.isEmpty ? Color.gray : Color.blue)
+                    .foregroundColor(.white)
+                    .cornerRadius(10)
+                }
+                .disabled(inputText.isEmpty || textManager.isProcessing)
+                .onTapGesture {
+                    keyboardManager.dismissKeyboard()
+                }
+                
+                // 摘要结果
+                if !summary.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("智能摘要")
+                                .font(.headline)
+                            
+                            Spacer()
+                            
+                            Text("\(summary.count)字")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            
+                            Button("复制") {
+                                UIPasteboard.general.string = summary
+                            }
+                            .font(.caption)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.green.opacity(0.1))
+                            .foregroundColor(.green)
+                            .cornerRadius(16)
+                        }
+                        
+                        Text(summary)
+                            .padding()
+                            .background(Color.blue.opacity(0.1))
+                            .cornerRadius(8)
+                    }
                 }
             }
-            
-            Spacer()
+            .padding()
         }
-        .padding()
-        .keyboardAware()
+        .scrollViewKeyboardAware()
     }
     
     private func generateSummary() {
@@ -342,102 +340,102 @@ struct TextCompletionView: View {
     ]
     
     var body: some View {
-        VStack(spacing: 16) {
-            // 输入区域
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("开始文本")
-                        .font(.headline)
-                    
-                    Spacer()
-                    
-                    // 键盘关闭按钮
-                    if keyboardManager.isKeyboardVisible {
-                        Button(action: {
-                            keyboardManager.dismissKeyboard()
-                            isTextEditorFocused = false
-                        }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "keyboard.chevron.compact.down")
-                                Text("关闭键盘")
-                            }
-                            .font(.caption)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color(.systemGray5))
-                            .foregroundColor(.primary)
-                            .cornerRadius(12)
-                        }
-                    }
-                }
-                
-                TextEditor(text: $inputText)
-                    .frame(minHeight: 100)
-                    .padding(8)
-                    .focused($isTextEditorFocused)
-                    .background(Color(.systemGray6))
-                    .cornerRadius(8)
-                
-                // 示例提示
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(completionPrompts, id: \.self) { prompt in
-                            Button(prompt) {
-                                inputText = prompt
-                            }
-                            .font(.caption)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(Color.orange.opacity(0.1))
-                            .foregroundColor(.orange)
-                            .cornerRadius(16)
-                        }
-                    }
-                    .padding(.horizontal)
-                }
-            }
-            
-            // 补全按钮
-            Button(action: completeText) {
-                HStack {
-                    if textManager.isProcessing {
-                        ProgressView()
-                            .scaleEffect(0.8)
-                    }
-                    Text(textManager.isProcessing ? "补全中..." : "智能补全")
-                }
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(inputText.isEmpty ? Color.gray : Color.orange)
-                .foregroundColor(.white)
-                .cornerRadius(10)
-            }
-            .disabled(inputText.isEmpty || textManager.isProcessing)
-            .onTapGesture {
-                keyboardManager.dismissKeyboard()
-            }
-            
-            // 补全结果
-            if !completedText.isEmpty {
+        ScrollView {
+            VStack(spacing: 16) {
+                // 输入区域
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
-                        Text("补全结果")
+                        Text("开始文本")
                             .font(.headline)
                         
                         Spacer()
                         
-                        Button("复制全文") {
-                            UIPasteboard.general.string = inputText + completedText
+                        // 键盘关闭按钮
+                        if keyboardManager.isKeyboardVisible {
+                            Button(action: {
+                                keyboardManager.dismissKeyboard()
+                                isTextEditorFocused = false
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "keyboard.chevron.compact.down")
+                                    Text("关闭键盘")
+                                }
+                                .font(.caption)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color(.systemGray5))
+                                .foregroundColor(.primary)
+                                .cornerRadius(12)
+                            }
                         }
-                        .font(.caption)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color.green.opacity(0.1))
-                        .foregroundColor(.green)
-                        .cornerRadius(16)
                     }
                     
-                    ScrollView {
+                    TextEditor(text: $inputText)
+                        .frame(minHeight: 100)
+                        .padding(8)
+                        .focused($isTextEditorFocused)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(8)
+                    
+                    // 示例提示
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(completionPrompts, id: \.self) { prompt in
+                                Button(prompt) {
+                                    inputText = prompt
+                                }
+                                .font(.caption)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Color.orange.opacity(0.1))
+                                .foregroundColor(.orange)
+                                .cornerRadius(16)
+                            }
+                        }
+                        .padding(.horizontal)
+                    }
+                }
+                
+                // 补全按钮
+                Button(action: completeText) {
+                    HStack {
+                        if textManager.isProcessing {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                        }
+                        Text(textManager.isProcessing ? "补全中..." : "智能补全")
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(inputText.isEmpty ? Color.gray : Color.orange)
+                    .foregroundColor(.white)
+                    .cornerRadius(10)
+                }
+                .disabled(inputText.isEmpty || textManager.isProcessing)
+                .onTapGesture {
+                    keyboardManager.dismissKeyboard()
+                }
+                
+                // 补全结果
+                if !completedText.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("补全结果")
+                                .font(.headline)
+                            
+                            Spacer()
+                            
+                            Button("复制全文") {
+                                UIPasteboard.general.string = inputText + completedText
+                            }
+                            .font(.caption)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.green.opacity(0.1))
+                            .foregroundColor(.green)
+                            .cornerRadius(16)
+                        }
+                        
                         VStack(alignment: .leading, spacing: 8) {
                             // 原文
                             Text(inputText)
@@ -460,11 +458,9 @@ struct TextCompletionView: View {
                     }
                 }
             }
-            
-            Spacer()
+            .padding()
         }
-        .padding()
-        .keyboardAware()
+        .scrollViewKeyboardAware()
     }
     
     private func completeText() {

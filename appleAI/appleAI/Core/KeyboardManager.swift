@@ -49,14 +49,36 @@ class KeyboardManager: ObservableObject {
 // MARK: - 键盘避让视图修饰符
 struct KeyboardAwareModifier: ViewModifier {
     @StateObject private var keyboardManager = KeyboardManager()
+    @State private var currentOffset: CGFloat = 0
     
     func body(content: Content) -> some View {
-        content
-            .padding(.bottom, keyboardManager.keyboardHeight)
-            .environmentObject(keyboardManager)
-            .onTapGesture {
-                keyboardManager.dismissKeyboard()
-            }
+        GeometryReader { geometry in
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipped()
+                .offset(y: currentOffset)
+                .environmentObject(keyboardManager)
+                .onReceive(keyboardManager.$keyboardHeight) { keyboardHeight in
+                    // 如果键盘显示且高度大于0，调整偏移量
+                    if keyboardHeight > 0 {
+                        // 获取安全区域底部高度
+                        let safeAreaBottom = geometry.safeAreaInsets.bottom
+                        // 计算需要的偏移量，考虑安全区域
+                        let offset = -(keyboardHeight - safeAreaBottom) / 2
+                        withAnimation(.easeOut(duration: 0.25)) {
+                            currentOffset = offset
+                        }
+                    } else {
+                        // 键盘隐藏时重置偏移量
+                        withAnimation(.easeOut(duration: 0.25)) {
+                            currentOffset = 0
+                        }
+                    }
+                }
+                .onTapGesture {
+                    keyboardManager.dismissKeyboard()
+                }
+        }
     }
 }
 
@@ -353,14 +375,14 @@ struct ScrollViewKeyboardAwareModifier: ViewModifier {
         GeometryReader { geometry in
             ScrollView {
                 content
-                    .padding(.bottom, keyboardManager.keyboardHeight)
-                    .frame(minHeight: geometry.size.height - keyboardManager.keyboardHeight)
+                    .padding(.bottom, max(0, keyboardManager.keyboardHeight - geometry.safeAreaInsets.bottom))
+                    .frame(minHeight: geometry.size.height - max(0, keyboardManager.keyboardHeight - geometry.safeAreaInsets.bottom))
             }
             .environmentObject(keyboardManager)
-            .animation(.easeOut(duration: 0.3), value: keyboardManager.keyboardHeight)
-        }
-        .onTapGesture {
-            keyboardManager.dismissKeyboard()
+            .animation(.easeOut(duration: 0.25), value: keyboardManager.keyboardHeight)
+            .onTapGesture {
+                keyboardManager.dismissKeyboard()
+            }
         }
     }
 }

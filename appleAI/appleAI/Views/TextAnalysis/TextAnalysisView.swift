@@ -59,106 +59,104 @@ struct SentimentAnalysisView: View {
     ]
     
     var body: some View {
-        VStack(spacing: 16) {
-            // 输入区域
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("待分析文本")
-                        .font(.headline)
-                    
-                    Spacer()
-                    
-                    // 键盘关闭按钮
-                    if keyboardManager.isKeyboardVisible {
-                        Button(action: {
-                            keyboardManager.dismissKeyboard()
-                            isTextEditorFocused = false
-                        }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "keyboard.chevron.compact.down")
-                                Text("关闭键盘")
-                            }
-                            .font(.caption)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color(.systemGray5))
-                            .foregroundColor(.primary)
-                            .cornerRadius(12)
-                        }
-                    }
-                }
-                
-                TextEditor(text: $inputText)
-                    .frame(minHeight: 100)
-                    .padding(8)
-                    .background(Color(.systemGray6))
-                    .cornerRadius(8)
-                    .focused($isTextEditorFocused)
-                
-                // 示例文本
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(sampleTexts, id: \.self) { sample in
-                            Button(sample) {
-                                inputText = sample
-                            }
-                            .font(.caption)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(Color.green.opacity(0.1))
-                            .foregroundColor(.green)
-                            .cornerRadius(16)
-                            .lineLimit(1)
-                        }
-                    }
-                    .padding(.horizontal)
-                }
-            }
-            
-            // 分析按钮
-            Button(action: analyzeSentiment) {
-                HStack {
-                    if isAnalyzing {
-                        ProgressView()
-                            .scaleEffect(0.8)
-                    }
-                    Text(isAnalyzing ? "分析中..." : "分析情感")
-                }
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(inputText.isEmpty ? Color.gray : Color.green)
-                .foregroundColor(.white)
-                .cornerRadius(10)
-            }
-            .disabled(inputText.isEmpty || isAnalyzing)
-            
-            // 分析结果
-            if let result = sentimentResult {
-                SentimentResultCard(result: result)
-            }
-            
-            // 历史记录
-            if !analysisHistory.isEmpty {
+        ScrollView {
+            VStack(spacing: 16) {
+                // 输入区域
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("分析历史")
-                        .font(.headline)
+                    HStack {
+                        Text("待分析文本")
+                            .font(.headline)
+                        
+                        Spacer()
+                        
+                        // 键盘关闭按钮
+                        if keyboardManager.isKeyboardVisible {
+                            Button(action: {
+                                keyboardManager.dismissKeyboard()
+                                isTextEditorFocused = false
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "keyboard.chevron.compact.down")
+                                    Text("关闭键盘")
+                                }
+                                .font(.caption)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color(.systemGray5))
+                                .foregroundColor(.primary)
+                                .cornerRadius(12)
+                            }
+                        }
+                    }
                     
-                    ScrollView {
+                    TextEditor(text: $inputText)
+                        .frame(minHeight: 100)
+                        .padding(8)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(8)
+                        .focused($isTextEditorFocused)
+                    
+                    // 示例文本
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(sampleTexts, id: \.self) { sample in
+                                Button(sample) {
+                                    inputText = sample
+                                }
+                                .font(.caption)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Color.green.opacity(0.1))
+                                .foregroundColor(.green)
+                                .cornerRadius(16)
+                                .lineLimit(1)
+                            }
+                        }
+                        .padding(.horizontal)
+                    }
+                }
+                
+                // 分析按钮
+                Button(action: analyzeSentiment) {
+                    HStack {
+                        if isAnalyzing {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                        }
+                        Text(isAnalyzing ? "分析中..." : "分析情感")
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(inputText.isEmpty ? Color.gray : Color.green)
+                    .foregroundColor(.white)
+                    .cornerRadius(10)
+                }
+                .disabled(inputText.isEmpty || isAnalyzing)
+                
+                // 分析结果
+                if let result = sentimentResult {
+                    SentimentResultCard(result: result)
+                }
+                
+                // 历史记录
+                if !analysisHistory.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("分析历史")
+                            .font(.headline)
+                        
                         LazyVStack(spacing: 8) {
                             ForEach(analysisHistory.indices, id: \.self) { index in
                                 let result = analysisHistory[index]
                                 SentimentHistoryCard(result: result)
                             }
                         }
+                        .frame(maxHeight: 200)
                     }
-                    .frame(maxHeight: 200)
                 }
             }
-            
-            Spacer()
+            .padding()
         }
-        .padding()
-        .keyboardAware()
+        .scrollViewKeyboardAware()
     }
     
     private func analyzeSentiment() {
@@ -288,107 +286,107 @@ struct KeywordExtractionView: View {
     ]
     
     var body: some View {
-        VStack(spacing: 16) {
-            // 输入区域
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("待分析文本")
-                        .font(.headline)
-                    
-                    Spacer()
-                    
-                    // 键盘关闭按钮
-                    if keyboardManager.isKeyboardVisible {
-                        Button(action: {
-                            keyboardManager.dismissKeyboard()
-                            isTextEditorFocused = false
-                        }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "keyboard.chevron.compact.down")
-                                Text("关闭键盘")
-                            }
-                            .font(.caption)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color(.systemGray5))
-                            .foregroundColor(.primary)
-                            .cornerRadius(12)
-                        }
-                    }
-                }
-                
-                TextEditor(text: $inputText)
-                    .frame(minHeight: 120)
-                    .padding(8)
-                    .background(Color(.systemGray6))
-                    .cornerRadius(8)
-                    .focused($isTextEditorFocused)
-                
-                // 示例文本
+        ScrollView {
+            VStack(spacing: 16) {
+                // 输入区域
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("示例文本:")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    
-                    ForEach(sampleTexts, id: \.self) { sample in
-                        Button(sample) {
-                            inputText = sample
-                        }
-                        .font(.caption)
-                        .foregroundColor(.blue)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .multilineTextAlignment(.leading)
-                    }
-                }
-            }
-            
-            // 提取按钮
-            Button(action: extractKeywords) {
-                HStack {
-                    if isExtracting {
-                        ProgressView()
-                            .scaleEffect(0.8)
-                    }
-                    Text(isExtracting ? "提取中..." : "提取关键词")
-                }
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(inputText.isEmpty ? Color.gray : Color.blue)
-                .foregroundColor(.white)
-                .cornerRadius(10)
-            }
-            .disabled(inputText.isEmpty || isExtracting)
-            
-            // 关键词结果
-            if !keywords.isEmpty {
-                VStack(alignment: .leading, spacing: 12) {
                     HStack {
-                        Text("提取的关键词")
+                        Text("待分析文本")
                             .font(.headline)
                         
                         Spacer()
                         
-                        Text("\(keywords.count)个")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                        // 键盘关闭按钮
+                        if keyboardManager.isKeyboardVisible {
+                            Button(action: {
+                                keyboardManager.dismissKeyboard()
+                                isTextEditorFocused = false
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "keyboard.chevron.compact.down")
+                                    Text("关闭键盘")
+                                }
+                                .font(.caption)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color(.systemGray5))
+                                .foregroundColor(.primary)
+                                .cornerRadius(12)
+                            }
+                        }
                     }
                     
-                    // 关键词标签云
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 8) {
-                        ForEach(keywords, id: \.self) { keyword in
-                            KeywordTag(keyword: keyword)
+                    TextEditor(text: $inputText)
+                        .frame(minHeight: 120)
+                        .padding(8)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(8)
+                        .focused($isTextEditorFocused)
+                    
+                    // 示例文本
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("示例文本:")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        
+                        ForEach(sampleTexts, id: \.self) { sample in
+                            Button(sample) {
+                                inputText = sample
+                            }
+                            .font(.caption)
+                            .foregroundColor(.blue)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .multilineTextAlignment(.leading)
                         }
                     }
                 }
-                .padding()
-                .background(Color.blue.opacity(0.1))
-                .cornerRadius(12)
+                
+                // 提取按钮
+                Button(action: extractKeywords) {
+                    HStack {
+                        if isExtracting {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                        }
+                        Text(isExtracting ? "提取中..." : "提取关键词")
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(inputText.isEmpty ? Color.gray : Color.blue)
+                    .foregroundColor(.white)
+                    .cornerRadius(10)
+                }
+                .disabled(inputText.isEmpty || isExtracting)
+                
+                // 关键词结果
+                if !keywords.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Text("提取的关键词")
+                                .font(.headline)
+                            
+                            Spacer()
+                            
+                            Text("\(keywords.count)个")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        // 关键词标签云
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 8) {
+                            ForEach(keywords, id: \.self) { keyword in
+                                KeywordTag(keyword: keyword)
+                            }
+                        }
+                    }
+                    .padding()
+                    .background(Color.blue.opacity(0.1))
+                    .cornerRadius(12)
+                }
             }
-            
-            Spacer()
+            .padding()
         }
-        .padding()
-        .keyboardAware()
+        .scrollViewKeyboardAware()
     }
     
     private func extractKeywords() {
@@ -436,99 +434,99 @@ struct TextClassificationView: View {
     private let categories = ["新闻", "科技", "娱乐", "体育", "财经", "教育", "健康", "旅游"]
     
     var body: some View {
-        VStack(spacing: 16) {
-            // 输入区域
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("待分类文本")
+        ScrollView {
+            VStack(spacing: 16) {
+                // 输入区域
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("待分类文本")
+                            .font(.headline)
+                        
+                        Spacer()
+                        
+                        // 键盘关闭按钮
+                        if keyboardManager.isKeyboardVisible {
+                            Button(action: {
+                                keyboardManager.dismissKeyboard()
+                                isTextEditorFocused = false
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "keyboard.chevron.compact.down")
+                                    Text("关闭键盘")
+                                }
+                                .font(.caption)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color(.systemGray5))
+                                .foregroundColor(.primary)
+                                .cornerRadius(12)
+                            }
+                        }
+                    }
+                    
+                    TextEditor(text: $inputText)
+                        .frame(minHeight: 120)
+                        .padding(8)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(8)
+                        .focused($isTextEditorFocused)
+                }
+                
+                // 分类按钮
+                Button(action: classifyText) {
+                    HStack {
+                        if isClassifying {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                        }
+                        Text(isClassifying ? "分类中..." : "文本分类")
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(inputText.isEmpty ? Color.gray : Color.purple)
+                    .foregroundColor(.white)
+                    .cornerRadius(10)
+                }
+                .disabled(inputText.isEmpty || isClassifying)
+                
+                // 分类结果
+                if !classification.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("分类结果")
+                            .font(.headline)
+                        
+                        Text(classification)
+                            .font(.title2)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.purple)
+                            .padding()
+                            .frame(maxWidth: .infinity)
+                            .background(Color.purple.opacity(0.1))
+                            .cornerRadius(12)
+                    }
+                }
+                
+                // 预定义分类
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("常见分类")
                         .font(.headline)
                     
-                    Spacer()
-                    
-                    // 键盘关闭按钮
-                    if keyboardManager.isKeyboardVisible {
-                        Button(action: {
-                            keyboardManager.dismissKeyboard()
-                            isTextEditorFocused = false
-                        }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "keyboard.chevron.compact.down")
-                                Text("关闭键盘")
-                            }
-                            .font(.caption)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color(.systemGray5))
-                            .foregroundColor(.primary)
-                            .cornerRadius(12)
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 8) {
+                        ForEach(categories, id: \.self) { category in
+                            Text(category)
+                                .font(.caption)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Color.purple.opacity(0.1))
+                                .foregroundColor(.purple)
+                                .cornerRadius(16)
                         }
                     }
                 }
-                
-                TextEditor(text: $inputText)
-                    .frame(minHeight: 120)
-                    .padding(8)
-                    .background(Color(.systemGray6))
-                    .cornerRadius(8)
-                    .focused($isTextEditorFocused)
             }
-            
-            // 分类按钮
-            Button(action: classifyText) {
-                HStack {
-                    if isClassifying {
-                        ProgressView()
-                            .scaleEffect(0.8)
-                    }
-                    Text(isClassifying ? "分类中..." : "文本分类")
-                }
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(inputText.isEmpty ? Color.gray : Color.purple)
-                .foregroundColor(.white)
-                .cornerRadius(10)
-            }
-            .disabled(inputText.isEmpty || isClassifying)
-            
-            // 分类结果
-            if !classification.isEmpty {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("分类结果")
-                        .font(.headline)
-                    
-                    Text(classification)
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.purple)
-                        .padding()
-                        .frame(maxWidth: .infinity)
-                        .background(Color.purple.opacity(0.1))
-                        .cornerRadius(12)
-                }
-            }
-            
-            // 预定义分类
-            VStack(alignment: .leading, spacing: 8) {
-                Text("常见分类")
-                    .font(.headline)
-                
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 8) {
-                    ForEach(categories, id: \.self) { category in
-                        Text(category)
-                            .font(.caption)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(Color.purple.opacity(0.1))
-                            .foregroundColor(.purple)
-                            .cornerRadius(16)
-                    }
-                }
-            }
-            
-            Spacer()
+            .padding()
         }
-        .padding()
-        .keyboardAware()
+        .scrollViewKeyboardAware()
     }
     
     private func classifyText() {
