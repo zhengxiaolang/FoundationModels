@@ -1,4 +1,5 @@
 import SwiftUI
+import FoundationModels
 
 struct ChatView: View {
     @EnvironmentObject var assistant: AIAssistant

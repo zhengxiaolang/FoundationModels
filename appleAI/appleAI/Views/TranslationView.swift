@@ -2,13 +2,12 @@ import SwiftUI
 
 struct TranslationView: View {
     @EnvironmentObject var assistant: AIAssistant
+    @StateObject private var textManager = TextGenerationManager()
     @StateObject private var keyboardManager = KeyboardManager()
     @State private var inputText = ""
     @State private var translatedText = ""
     @State private var showResult = false
     @State private var selectedTargetLanguage: LanguageOption = .english
-    @State private var detectedLanguage = "自动检测"
-    @State private var isTranslating = false
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
@@ -30,60 +29,39 @@ struct TranslationView: View {
                     
                     // 语言选择
                     VStack(alignment: .leading, spacing: 16) {
-                        Text("翻译设置")
+                        Text("目标语言设置")
                             .font(.headline)
                             .fontWeight(.semibold)
                         
-                        HStack(spacing: 16) {
-                            // 源语言显示
-                            VStack(spacing: 8) {
-                                Text("源语言")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                
-                                Text(detectedLanguage)
-                                    .font(.subheadline)
-                                    .fontWeight(.medium)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 8)
-                                    .background(Color.blue.opacity(0.1))
-                                    .foregroundColor(.blue)
-                                    .cornerRadius(8)
-                            }
-                            
-                            Image(systemName: "arrow.right")
+                        HStack {
+                            Text("翻译为：")
+                                .font(.subheadline)
                                 .foregroundColor(.secondary)
                             
-                            // 目标语言选择
-                            VStack(spacing: 8) {
-                                Text("目标语言")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                
-                                Menu {
-                                    ForEach(LanguageOption.allCases, id: \.self) { language in
-                                        Button(language.displayName) {
-                                            selectedTargetLanguage = language
-                                        }
+                            Spacer()
+                            
+                            Menu {
+                                ForEach(LanguageOption.allCases, id: \.self) { language in
+                                    Button(language.displayName) {
+                                        selectedTargetLanguage = language
                                     }
-                                } label: {
-                                    HStack {
-                                        Text(selectedTargetLanguage.displayName)
-                                            .font(.subheadline)
-                                            .fontWeight(.medium)
-                                        
-                                        Image(systemName: "chevron.down")
-                                            .font(.caption)
-                                    }
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 8)
-                                    .background(Color.green.opacity(0.1))
-                                    .foregroundColor(.green)
-                                    .cornerRadius(8)
                                 }
+                            } label: {
+                                HStack {
+                                    Text(selectedTargetLanguage.displayName)
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                    
+                                    Image(systemName: "chevron.down")
+                                        .font(.caption)
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                                .background(Color.green.opacity(0.1))
+                                .foregroundColor(.green)
+                                .cornerRadius(8)
                             }
                         }
-                        .frame(maxWidth: .infinity)
                     }
                     .padding(.horizontal)
                     
@@ -124,9 +102,6 @@ struct TranslationView: View {
                                 RoundedRectangle(cornerRadius: 12)
                                     .stroke(Color.blue.opacity(0.3), lineWidth: 1)
                             )
-                            .onChange(of: inputText) { _ in
-                                updateDetectedLanguage()
-                            }
                         
                         if inputText.isEmpty {
                             Text("例如：Hello, how are you today?")
@@ -140,25 +115,25 @@ struct TranslationView: View {
                     // 翻译按钮
                     Button(action: translateText) {
                         HStack {
-                            if isTranslating {
+                            if textManager.isProcessing {
                                 ProgressView()
                                     .scaleEffect(0.8)
                                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
                             }
 
-                            Text(isTranslating ? "正在翻译..." : "🚀 开始翻译")
+                            Text(textManager.isProcessing ? "正在翻译..." : "🚀 开始翻译")
                                 .fontWeight(.semibold)
                         }
                         .frame(maxWidth: .infinity)
                         .padding()
                         .background(
-                            inputText.isEmpty || isTranslating ?
+                            inputText.isEmpty || textManager.isProcessing ?
                             Color.gray : Color.blue
                         )
                         .foregroundColor(.white)
                         .cornerRadius(12)
                     }
-                    .disabled(inputText.isEmpty || isTranslating)
+                    .disabled(inputText.isEmpty || textManager.isProcessing)
                     .padding(.horizontal)
                     .onTapGesture {
                         keyboardManager.dismissKeyboard()
@@ -174,7 +149,7 @@ struct TranslationView: View {
                                 
                                 Spacer()
                                 
-                                Button("复制") {
+                                Button("复制结果") {
                                     UIPasteboard.general.string = translatedText
                                 }
                                 .font(.caption)
@@ -185,39 +160,57 @@ struct TranslationView: View {
                                 .cornerRadius(8)
                             }
                             
-                            Text(translatedText)
-                                .font(.body)
-                                .lineSpacing(4)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(16)
-                                .background(Color(.systemBackground))
-                                .cornerRadius(12)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(Color.green.opacity(0.3), lineWidth: 1)
-                                )
+                            // Instructions 说明
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("翻译指令")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.secondary)
+                                
+                                Text("将以下文本翻译为\(selectedTargetLanguage.displayName)，要求准确传达原意，语言自然流畅，符合目标语言的表达习惯。")
+                                    .font(.caption)
+                                    .padding(8)
+                                    .background(Color(.systemGray6))
+                                    .cornerRadius(6)
+                            }
                             
-                            // 操作按钮
-                            HStack(spacing: 12) {
-                                Button("重新翻译") {
-                                    translateText()
-                                }
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
-                                .background(Color.blue.opacity(0.1))
-                                .foregroundColor(.blue)
-                                .cornerRadius(8)
+                            // 用户输入
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("原文内容")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.secondary)
                                 
-                                Button("交换语言") {
-                                    swapLanguages()
-                                }
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
-                                .background(Color.orange.opacity(0.1))
-                                .foregroundColor(.orange)
-                                .cornerRadius(8)
+                                Text(inputText)
+                                    .font(.body)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(12)
+                                    .background(Color.blue.opacity(0.1))
+                                    .cornerRadius(8)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(Color.blue.opacity(0.3), lineWidth: 1)
+                                    )
+                            }
+                            
+                            // 翻译结果
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("翻译结果")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.secondary)
                                 
-                                Spacer()
+                                Text(translatedText)
+                                    .font(.body)
+                                    .lineSpacing(4)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(12)
+                                    .background(Color.green.opacity(0.1))
+                                    .cornerRadius(8)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(Color.green.opacity(0.3), lineWidth: 1)
+                                    )
                             }
                         }
                         .padding(.horizontal)
@@ -245,33 +238,23 @@ struct TranslationView: View {
         guard !inputText.isEmpty else { return }
 
         keyboardManager.dismissKeyboard()
-        isTranslating = true
 
         Task {
             do {
-                // 使用正确的 LanguageModelSession API
-                let instructions = """
-                请将以下文本翻译为\(selectedTargetLanguage.displayName)。
-                翻译要求：
-                1. 准确传达原意
-                2. 语言自然流畅
-                3. 符合目标语言的表达习惯
-                4. 保持原文的语气和风格
-                """
-                
-                let session = LanguageModelSession(instructions: instructions)
-                let response = try await session.respond(to: inputText)
+                // 使用 TextGenerationManager 的真正AI翻译
+                let result = try await textManager.generateTranslation(
+                    text: inputText,
+                    to: selectedTargetLanguage.displayName
+                )
 
                 await MainActor.run {
-                    isTranslating = false
-                    translatedText = response.content
+                    translatedText = result
                     withAnimation(.easeInOut(duration: 0.5)) {
                         showResult = true
                     }
                 }
             } catch {
                 await MainActor.run {
-                    isTranslating = false
                     translatedText = "翻译失败：\(error.localizedDescription)"
                     showResult = true
                 }
@@ -280,39 +263,6 @@ struct TranslationView: View {
         }
     }
     
-    private func updateDetectedLanguage() {
-        // 简单的语言检测逻辑
-        if inputText.isEmpty {
-            detectedLanguage = "自动检测"
-            return
-        }
-        
-        let chinesePattern = "[\u{4e00}-\u{9fff}]"
-        let englishPattern = "[a-zA-Z]"
-        
-        if inputText.range(of: chinesePattern, options: .regularExpression) != nil {
-            detectedLanguage = "中文"
-        } else if inputText.range(of: englishPattern, options: .regularExpression) != nil {
-            detectedLanguage = "英文"
-        } else {
-            detectedLanguage = "未知语言"
-        }
-    }
-    
-    private func swapLanguages() {
-        // 交换输入和输出文本
-        let temp = inputText
-        inputText = translatedText
-        translatedText = temp
-        
-        // 更新检测语言
-        updateDetectedLanguage()
-        
-        // 如果有结果，重新翻译
-        if showResult && !inputText.isEmpty {
-            translateText()
-        }
-    }
 }
 
 enum LanguageOption: String, CaseIterable {

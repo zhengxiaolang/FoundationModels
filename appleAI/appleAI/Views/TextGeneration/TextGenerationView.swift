@@ -1,5 +1,7 @@
 import SwiftUI
 
+import FoundationModels
+
 struct TextGenerationView: View {
     @EnvironmentObject var assistant: AIAssistant
     @StateObject private var keyboardManager = KeyboardManager()

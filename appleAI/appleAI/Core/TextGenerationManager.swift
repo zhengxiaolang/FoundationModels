@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import Combine
+import FoundationModels
 
 // MARK: - 文本生成管理类
 
@@ -9,20 +10,34 @@ class TextGenerationManager: ObservableObject {
     @Published var lastError: String?
     @Published var lastResult: String?
     
+    // 检查设备是否支持 FoundationModels
+    var isFoundationModelsSupported: Bool {
+        if #available(iOS 18.0, macOS 15.0, *) {
+            return true
+        }
+        return false
+    }
+    
     // MARK: - 公共方法
     
-    /// 使用自定义指令和提示词生成文本
+    /// 使用自定义指令和提示词生成文本 (使用苹果官方 FoundationModels)
     /// - Parameters:
     ///   - instructions: 指令文本，用于指导AI如何响应
     ///   - prompt: 用户输入的提示词
     /// - Returns: 生成的文本内容
     func generateText(instructions: String, prompt: String) async throws -> String {
+        // 检查设备支持
+        guard isFoundationModelsSupported else {
+            throw FoundationModelError.unsupportedOperation
+        }
+        
         await MainActor.run {
             self.isProcessing = true
             self.lastError = nil
         }
         
         do {
+            // 使用苹果官方 FoundationModels API
             let session = LanguageModelSession(instructions: instructions)
             let response = try await session.respond(to: prompt)
             
@@ -41,7 +56,7 @@ class TextGenerationManager: ObservableObject {
         }
     }
     
-    /// 生成相关主题建议
+    /// 生成相关主题建议 (使用苹果官方 FoundationModels)
     /// - Parameter topic: 主题
     /// - Returns: 相关主题建议
     func generateRelatedTopics(for topic: String) async throws -> String {
@@ -53,7 +68,7 @@ class TextGenerationManager: ObservableObject {
         return try await generateText(instructions: instructions, prompt: topic)
     }
     
-    /// 生成创意内容
+    /// 生成创意内容 (使用苹果官方 FoundationModels)
     /// - Parameters:
     ///   - prompt: 创意提示
     ///   - style: 创意风格
@@ -68,7 +83,7 @@ class TextGenerationManager: ObservableObject {
         return try await generateText(instructions: instructions, prompt: prompt)
     }
     
-    /// 生成技术解释
+    /// 生成技术解释 (使用苹果官方 FoundationModels)
     /// - Parameter concept: 技术概念
     /// - Returns: 技术解释
     func generateTechnicalExplanation(for concept: String) async throws -> String {
@@ -84,7 +99,7 @@ class TextGenerationManager: ObservableObject {
         return try await generateText(instructions: instructions, prompt: concept)
     }
     
-    /// 生成对话回复
+    /// 生成对话回复 (使用苹果官方 FoundationModels)
     /// - Parameters:
     ///   - message: 用户消息
     ///   - context: 对话上下文
@@ -99,7 +114,7 @@ class TextGenerationManager: ObservableObject {
         return try await generateText(instructions: instructions, prompt: message)
     }
     
-    /// 生成文本摘要
+    /// 生成文本摘要 (使用苹果官方 FoundationModels)
     /// - Parameters:
     ///   - text: 要摘要的文本
     ///   - maxLength: 最大长度
@@ -116,7 +131,7 @@ class TextGenerationManager: ObservableObject {
         return try await generateText(instructions: instructions, prompt: text)
     }
     
-    /// 生成翻译
+    /// 生成翻译 (使用苹果官方 FoundationModels)
     /// - Parameters:
     ///   - text: 要翻译的文本
     ///   - targetLanguage: 目标语言
@@ -133,7 +148,7 @@ class TextGenerationManager: ObservableObject {
         return try await generateText(instructions: instructions, prompt: text)
     }
     
-    /// 生成文本改写
+    /// 生成文本改写 (使用苹果官方 FoundationModels)
     /// - Parameters:
     ///   - text: 原文本
     ///   - style: 改写风格
@@ -148,6 +163,41 @@ class TextGenerationManager: ObservableObject {
             """
         
         return try await generateText(instructions: instructions, prompt: text)
+    }
+    
+    /// 测试苹果官方 FoundationModels API 的示例方法
+    /// 按照您提供的示例实现真正的AI调用
+    func testAppleFoundationModels() async throws -> String {
+        await MainActor.run {
+            self.isProcessing = true
+            self.lastError = nil
+        }
+        
+        do {
+            // 完全按照苹果官方示例的调用方式
+            let instructions = """
+                Suggest five related topics. Keep them concise (three to seven words) and make sure they \
+                build naturally from the person's topic.
+                """
+
+            let session = LanguageModelSession(instructions: instructions)
+
+            let prompt = "Making homemade bread"
+            let response = try await session.respond(to: prompt)
+            
+            await MainActor.run {
+                self.isProcessing = false
+                self.lastResult = response.content
+            }
+            
+            return response.content
+        } catch {
+            await MainActor.run {
+                self.isProcessing = false
+                self.lastError = "Apple FoundationModels 调用失败: \(error.localizedDescription)"
+            }
+            throw error
+        }
     }
     
     // MARK: - 便利方法
