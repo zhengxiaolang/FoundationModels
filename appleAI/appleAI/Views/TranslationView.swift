@@ -2,6 +2,7 @@ import SwiftUI
 
 struct TranslationView: View {
     @EnvironmentObject var assistant: AIAssistant
+    @StateObject private var keyboardManager = KeyboardManager()
     @State private var inputText = ""
     @State private var translatedText = ""
     @State private var isTranslating = false
@@ -88,9 +89,31 @@ struct TranslationView: View {
                     
                     // 输入区域
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("输入要翻译的文本")
-                            .font(.headline)
-                            .fontWeight(.semibold)
+                        HStack {
+                            Text("输入要翻译的文本")
+                                .font(.headline)
+                                .fontWeight(.semibold)
+                            
+                            Spacer()
+                            
+                            // 键盘关闭按钮
+                            if keyboardManager.isKeyboardVisible {
+                                Button(action: {
+                                    keyboardManager.dismissKeyboard()
+                                }) {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "keyboard.chevron.compact.down")
+                                        Text("关闭键盘")
+                                    }
+                                    .font(.caption)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Color(.systemGray5))
+                                    .foregroundColor(.primary)
+                                    .cornerRadius(12)
+                                }
+                            }
+                        }
                         
                         TextEditor(text: $inputText)
                             .frame(minHeight: 120)
@@ -211,6 +234,8 @@ struct TranslationView: View {
                 }
             }
         }
+        .keyboardAware()
+        .environmentObject(keyboardManager)
     }
     
     private func translateText() {

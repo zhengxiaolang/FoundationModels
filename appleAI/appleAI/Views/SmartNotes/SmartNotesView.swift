@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SmartNotesView: View {
     @EnvironmentObject var assistant: AIAssistant
+    @StateObject private var keyboardManager = KeyboardManager()
     @State private var notes: [Note] = []
     @State private var selectedNote: Note?
     @State private var showingNewNote = false
@@ -53,16 +54,20 @@ struct SmartNotesView: View {
                     onUpdate: updateNote
                 )
                 .environmentObject(assistant)
+                .environmentObject(keyboardManager)
             } else {
                 NoteEmptyDetailView()
             }
         }
+        .environmentObject(keyboardManager)
+        .keyboardAware()
         .sheet(isPresented: $showingNewNote) {
             NewNoteView { newNote in
                 notes.append(newNote)
                 selectedNote = newNote
             }
             .environmentObject(assistant)
+            .environmentObject(keyboardManager)
         }
         .onAppear {
             loadSampleNotes()
@@ -107,28 +112,56 @@ struct SmartNotesView: View {
 
 struct SearchBar: View {
     @Binding var text: String
+    @EnvironmentObject var keyboardManager: KeyboardManager
+    @FocusState private var isTextFieldFocused: Bool
     
     var body: some View {
-        HStack {
-            Image(systemName: "magnifyingglass")
-                .foregroundColor(.secondary)
-            
-            TextField("搜索笔记...", text: $text)
-                .textFieldStyle(PlainTextFieldStyle())
-            
-            if !text.isEmpty {
-                Button("清除") {
-                    text = ""
+        VStack(spacing: 8) {
+            // 键盘关闭按钮 (当键盘显示时)
+            if keyboardManager.isKeyboardVisible {
+                HStack {
+                    Spacer()
+                    Button(action: {
+                        keyboardManager.dismissKeyboard()
+                        isTextFieldFocused = false
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "keyboard.chevron.compact.down")
+                            Text("关闭键盘")
+                        }
+                        .font(.caption)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color(.systemGray5))
+                        .foregroundColor(.primary)
+                        .cornerRadius(12)
+                    }
                 }
-                .font(.caption)
-                .foregroundColor(.blue)
+                .padding(.horizontal)
             }
+            
+            HStack {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(.secondary)
+                
+                TextField("搜索笔记...", text: $text)
+                    .textFieldStyle(PlainTextFieldStyle())
+                    .focused($isTextFieldFocused)
+                
+                if !text.isEmpty {
+                    Button("清除") {
+                        text = ""
+                    }
+                    .font(.caption)
+                    .foregroundColor(.blue)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color(.systemGray6))
+            .cornerRadius(10)
+            .padding(.horizontal)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color(.systemGray6))
-        .cornerRadius(10)
-        .padding()
     }
 }
 
@@ -244,11 +277,39 @@ struct NoteDetailView: View {
     @Binding var note: Note
     let onUpdate: (Note) -> Void
     @EnvironmentObject var assistant: AIAssistant
+    @EnvironmentObject var keyboardManager: KeyboardManager
     @State private var isAnalyzing = false
     @State private var showingAITools = false
+    @FocusState private var isTitleFocused: Bool
+    @FocusState private var isContentFocused: Bool
     
     var body: some View {
         VStack(spacing: 0) {
+            // 键盘关闭按钮区域
+            if keyboardManager.isKeyboardVisible {
+                HStack {
+                    Spacer()
+                    Button(action: {
+                        keyboardManager.dismissKeyboard()
+                        isTitleFocused = false
+                        isContentFocused = false
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "keyboard.chevron.compact.down")
+                            Text("关闭键盘")
+                        }
+                        .font(.caption)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color(.systemGray5))
+                        .foregroundColor(.primary)
+                        .cornerRadius(16)
+                    }
+                }
+                .padding()
+                .background(Color(.systemBackground))
+            }
+            
             // 编辑区域
             ScrollView {
                 VStack(spacing: 16) {
@@ -257,6 +318,7 @@ struct NoteDetailView: View {
                         .font(.title2)
                         .fontWeight(.semibold)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .focused($isTitleFocused)
                     
                     // 内容编辑
                     TextEditor(text: $note.content)
@@ -265,6 +327,7 @@ struct NoteDetailView: View {
                         .padding(8)
                         .background(Color(.systemGray6))
                         .cornerRadius(8)
+                        .focused($isContentFocused)
                     
                     // AI 分析结果
                     AIAnalysisSection(note: note)
@@ -465,22 +528,51 @@ struct NewNoteView: View {
     @State private var title = ""
     @State private var content = ""
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var keyboardManager: KeyboardManager
+    @FocusState private var isTitleFocused: Bool
+    @FocusState private var isContentFocused: Bool
     
     var body: some View {
         NavigationView {
             VStack(spacing: 16) {
+                // 键盘关闭按钮
+                if keyboardManager.isKeyboardVisible {
+                    HStack {
+                        Spacer()
+                        Button(action: {
+                            keyboardManager.dismissKeyboard()
+                            isTitleFocused = false
+                            isContentFocused = false
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "keyboard.chevron.compact.down")
+                                Text("关闭键盘")
+                            }
+                            .font(.caption)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color(.systemGray5))
+                            .foregroundColor(.primary)
+                            .cornerRadius(12)
+                        }
+                    }
+                }
+                
                 TextField("笔记标题", text: $title)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
                     .font(.title2)
+                    .focused($isTitleFocused)
                 
                 TextEditor(text: $content)
                     .padding(8)
                     .background(Color(.systemGray6))
                     .cornerRadius(8)
+                    .focused($isContentFocused)
                 
                 Spacer()
             }
             .padding()
+            .keyboardAware()
             .navigationTitle("新建笔记")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

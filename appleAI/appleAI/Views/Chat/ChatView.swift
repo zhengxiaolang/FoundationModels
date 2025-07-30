@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ChatView: View {
     @EnvironmentObject var assistant: AIAssistant
+    @StateObject private var keyboardManager = KeyboardManager()
     @State private var messages: [ChatMessage] = []
     @State private var inputText = ""
     @State private var isLoading = false
@@ -76,7 +77,10 @@ struct ChatView: View {
                 isLoading: isLoading,
                 onSend: sendMessage
             )
+            .environmentObject(keyboardManager)
         }
+        .keyboardAware()
+        .environmentObject(keyboardManager)
         .navigationTitle("AI 助手")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -250,30 +254,58 @@ struct ChatBubbleView: View {
 
 struct ChatInputView: View {
     @Binding var inputText: String
+    @EnvironmentObject var keyboardManager: KeyboardManager
     let isLoading: Bool
     let onSend: () -> Void
+    @FocusState private var isTextFieldFocused: Bool
     
     var body: some View {
-        HStack(spacing: 12) {
-            // 文本输入框
-            TextField("输入消息...", text: $inputText, axis: .vertical)
-                .textFieldStyle(RoundedBorderTextFieldStyle())
-                .lineLimit(1...4)
-                .onSubmit {
-                    if !isLoading {
-                        onSend()
+        VStack(spacing: 8) {
+            // 键盘关闭按钮 (当键盘显示时)
+            if keyboardManager.isKeyboardVisible {
+                HStack {
+                    Spacer()
+                    Button(action: {
+                        keyboardManager.dismissKeyboard()
+                        isTextFieldFocused = false
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "keyboard.chevron.compact.down")
+                            Text("关闭键盘")
+                        }
+                        .font(.caption)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color(.systemGray5))
+                        .foregroundColor(.primary)
+                        .cornerRadius(16)
                     }
                 }
-            
-            // 发送按钮
-            Button(action: onSend) {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.title2)
-                    .foregroundColor(inputText.isEmpty || isLoading ? .gray : .blue)
+                .padding(.horizontal)
             }
-            .disabled(inputText.isEmpty || isLoading)
+            
+            HStack(spacing: 12) {
+                // 文本输入框
+                TextField("输入消息...", text: $inputText, axis: .vertical)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .lineLimit(1...4)
+                    .focused($isTextFieldFocused)
+                    .onSubmit {
+                        if !isLoading {
+                            onSend()
+                        }
+                    }
+                
+                // 发送按钮
+                Button(action: onSend) {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.title2)
+                        .foregroundColor(inputText.isEmpty || isLoading ? .gray : .blue)
+                }
+                .disabled(inputText.isEmpty || isLoading)
+            }
+            .padding()
         }
-        .padding()
         .background(Color(.systemBackground))
     }
 }

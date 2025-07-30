@@ -2,12 +2,14 @@ import SwiftUI
 
 struct TextGenerationView: View {
     @EnvironmentObject var assistant: AIAssistant
+    @StateObject private var keyboardManager = KeyboardManager()
     @State private var selectedTab = 0
     
     var body: some View {
         TabView(selection: $selectedTab) {
             CreativeWritingView()
                 .environmentObject(assistant)
+                .environmentObject(keyboardManager)
                 .tabItem {
                     Image(systemName: "pencil.and.outline")
                     Text("创意写作")
@@ -16,6 +18,7 @@ struct TextGenerationView: View {
 
             TextSummaryView()
                 .environmentObject(assistant)
+                .environmentObject(keyboardManager)
                 .tabItem {
                     Image(systemName: "doc.text")
                     Text("文本摘要")
@@ -24,6 +27,7 @@ struct TextGenerationView: View {
 
             TextCompletionView()
                 .environmentObject(assistant)
+                .environmentObject(keyboardManager)
                 .tabItem {
                     Image(systemName: "text.append")
                     Text("文本补全")
@@ -37,9 +41,11 @@ struct TextGenerationView: View {
 
 struct CreativeWritingView: View {
     @EnvironmentObject var assistant: AIAssistant
+    @EnvironmentObject var keyboardManager: KeyboardManager
     @State private var prompt = ""
     @State private var generatedText = ""
     @State private var isGenerating = false
+    @FocusState private var isTextEditorFocused: Bool
     
     private let promptSuggestions = [
         "写一个关于未来科技的短故事",
@@ -53,14 +59,38 @@ struct CreativeWritingView: View {
         VStack(spacing: 16) {
             // 输入区域
             VStack(alignment: .leading, spacing: 8) {
-                Text("创意提示")
-                    .font(.headline)
+                HStack {
+                    Text("创意提示")
+                        .font(.headline)
+                    
+                    Spacer()
+                    
+                    // 键盘关闭按钮
+                    if keyboardManager.isKeyboardVisible {
+                        Button(action: {
+                            keyboardManager.dismissKeyboard()
+                            isTextEditorFocused = false
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "keyboard.chevron.compact.down")
+                                Text("关闭键盘")
+                            }
+                            .font(.caption)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color(.systemGray5))
+                            .foregroundColor(.primary)
+                            .cornerRadius(12)
+                        }
+                    }
+                }
                 
                 TextEditor(text: $prompt)
                     .frame(minHeight: 100)
                     .padding(8)
                     .background(Color(.systemGray6))
                     .cornerRadius(8)
+                    .focused($isTextEditorFocused)
                 
                 // 提示建议
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -135,6 +165,7 @@ struct CreativeWritingView: View {
             Spacer()
         }
         .padding()
+        .keyboardAware()
     }
     
     private func generateCreativeText() {
@@ -161,23 +192,49 @@ struct CreativeWritingView: View {
 
 struct TextSummaryView: View {
     @EnvironmentObject var assistant: AIAssistant
+    @EnvironmentObject var keyboardManager: KeyboardManager
     @State private var inputText = ""
     @State private var summary = ""
     @State private var maxLength = 100
     @State private var isSummarizing = false
+    @FocusState private var isTextEditorFocused: Bool
     
     var body: some View {
         VStack(spacing: 16) {
             // 输入区域
             VStack(alignment: .leading, spacing: 8) {
-                Text("原文内容")
-                    .font(.headline)
+                HStack {
+                    Text("原文内容")
+                        .font(.headline)
+                    
+                    Spacer()
+                    
+                    // 键盘关闭按钮
+                    if keyboardManager.isKeyboardVisible {
+                        Button(action: {
+                            keyboardManager.dismissKeyboard()
+                            isTextEditorFocused = false
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "keyboard.chevron.compact.down")
+                                Text("关闭键盘")
+                            }
+                            .font(.caption)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color(.systemGray5))
+                            .foregroundColor(.primary)
+                            .cornerRadius(12)
+                        }
+                    }
+                }
                 
                 TextEditor(text: $inputText)
                     .frame(minHeight: 150)
                     .padding(8)
                     .background(Color(.systemGray6))
                     .cornerRadius(8)
+                    .focused($isTextEditorFocused)
                 
                 // 摘要长度设置
                 HStack {
@@ -246,6 +303,7 @@ struct TextSummaryView: View {
             Spacer()
         }
         .padding()
+        .keyboardAware()
     }
     
     private func generateSummary() {
@@ -268,9 +326,11 @@ struct TextSummaryView: View {
 
 struct TextCompletionView: View {
     @EnvironmentObject var assistant: AIAssistant
+    @EnvironmentObject var keyboardManager: KeyboardManager
     @State private var inputText = ""
     @State private var completedText = ""
     @State private var isCompleting = false
+    @FocusState private var isTextEditorFocused: Bool
     
     private let completionPrompts = [
         "在一个阳光明媚的早晨，",
@@ -284,12 +344,36 @@ struct TextCompletionView: View {
         VStack(spacing: 16) {
             // 输入区域
             VStack(alignment: .leading, spacing: 8) {
-                Text("开始文本")
-                    .font(.headline)
+                HStack {
+                    Text("开始文本")
+                        .font(.headline)
+                    
+                    Spacer()
+                    
+                    // 键盘关闭按钮
+                    if keyboardManager.isKeyboardVisible {
+                        Button(action: {
+                            keyboardManager.dismissKeyboard()
+                            isTextEditorFocused = false
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "keyboard.chevron.compact.down")
+                                Text("关闭键盘")
+                            }
+                            .font(.caption)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color(.systemGray5))
+                            .foregroundColor(.primary)
+                            .cornerRadius(12)
+                        }
+                    }
+                }
                 
                 TextEditor(text: $inputText)
                     .frame(minHeight: 100)
                     .padding(8)
+                    .focused($isTextEditorFocused)
                     .background(Color(.systemGray6))
                     .cornerRadius(8)
                 
@@ -376,6 +460,7 @@ struct TextCompletionView: View {
             Spacer()
         }
         .padding()
+        .keyboardAware()
     }
     
     private func completeText() {

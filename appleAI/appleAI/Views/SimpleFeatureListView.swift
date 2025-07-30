@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SimpleFeatureListView: View {
     @EnvironmentObject var assistant: AIAssistant
+    @StateObject private var keyboardManager = KeyboardManager()
     
     var body: some View {
         VStack(spacing: 20) {
@@ -33,35 +34,62 @@ struct SimpleFeatureListView: View {
             
             // 简化的功能列表
             VStack(spacing: 16) {
-                NavigationLink("文本生成", destination: SimpleTextGenerationView())
+                NavigationLink("文本生成", destination: SimpleTextGenerationView().environmentObject(keyboardManager))
                     .buttonStyle(.borderedProminent)
                 
-                NavigationLink("对话系统", destination: SimpleChatView())
+                NavigationLink("对话系统", destination: SimpleChatView().environmentObject(keyboardManager))
                     .buttonStyle(.borderedProminent)
                 
-                NavigationLink("调试工具", destination: SimpleDebugView())
+                NavigationLink("调试工具", destination: SimpleDebugView().environmentObject(keyboardManager))
                     .buttonStyle(.borderedProminent)
             }
             
             Spacer()
         }
         .padding()
+        .keyboardAware()
+        .environmentObject(keyboardManager)
         .navigationTitle("简化功能列表")
     }
 }
 
 struct SimpleTextGenerationView: View {
     @EnvironmentObject var assistant: AIAssistant
+    @EnvironmentObject var keyboardManager: KeyboardManager
     @State private var prompt = ""
     @State private var result = ""
+    @FocusState private var isTextFieldFocused: Bool
     
     var body: some View {
         VStack(spacing: 16) {
             Text("文本生成测试")
                 .font(.headline)
             
+            // 键盘关闭按钮
+            if keyboardManager.isKeyboardVisible {
+                HStack {
+                    Spacer()
+                    Button(action: {
+                        keyboardManager.dismissKeyboard()
+                        isTextFieldFocused = false
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "keyboard.chevron.compact.down")
+                            Text("关闭键盘")
+                        }
+                        .font(.caption)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color(.systemGray5))
+                        .foregroundColor(.primary)
+                        .cornerRadius(12)
+                    }
+                }
+            }
+            
             TextField("输入提示词", text: $prompt)
                 .textFieldStyle(.roundedBorder)
+                .focused($isTextFieldFocused)
             
             Button("生成文本") {
                 generateText()
@@ -83,6 +111,7 @@ struct SimpleTextGenerationView: View {
             Spacer()
         }
         .padding()
+        .keyboardAware()
         .navigationTitle("文本生成")
     }
     

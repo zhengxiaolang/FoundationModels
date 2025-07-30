@@ -2,12 +2,14 @@ import SwiftUI
 
 struct ContentProcessingView: View {
     @EnvironmentObject var assistant: AIAssistant
+    @StateObject private var keyboardManager = KeyboardManager()
     @State private var selectedTab = 0
     
     var body: some View {
         TabView(selection: $selectedTab) {
             TextRewritingView()
                 .environmentObject(assistant)
+                .environmentObject(keyboardManager)
                 .tabItem {
                     Image(systemName: "arrow.triangle.2.circlepath")
                     Text("文本改写")
@@ -16,6 +18,7 @@ struct ContentProcessingView: View {
 
             ContentProcessingTranslationView()
                 .environmentObject(assistant)
+                .environmentObject(keyboardManager)
                 .tabItem {
                     Image(systemName: "globe")
                     Text("语言翻译")
@@ -24,6 +27,7 @@ struct ContentProcessingView: View {
 
             FormatConversionView()
                 .environmentObject(assistant)
+                .environmentObject(keyboardManager)
                 .tabItem {
                     Image(systemName: "doc.text.below.ecg")
                     Text("格式转换")

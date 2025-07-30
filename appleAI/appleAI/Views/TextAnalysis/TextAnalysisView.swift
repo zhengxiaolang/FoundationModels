@@ -2,12 +2,14 @@ import SwiftUI
 
 struct TextAnalysisView: View {
     @EnvironmentObject var assistant: AIAssistant
+    @StateObject private var keyboardManager = KeyboardManager()
     @State private var selectedTab = 0
     
     var body: some View {
         TabView(selection: $selectedTab) {
             SentimentAnalysisView()
                 .environmentObject(assistant)
+                .environmentObject(keyboardManager)
                 .tabItem {
                     Image(systemName: "heart.text.square")
                     Text("情感分析")
@@ -16,6 +18,7 @@ struct TextAnalysisView: View {
 
             KeywordExtractionView()
                 .environmentObject(assistant)
+                .environmentObject(keyboardManager)
                 .tabItem {
                     Image(systemName: "tag")
                     Text("关键词提取")
@@ -24,6 +27,7 @@ struct TextAnalysisView: View {
 
             TextClassificationView()
                 .environmentObject(assistant)
+                .environmentObject(keyboardManager)
                 .tabItem {
                     Image(systemName: "folder.badge.questionmark")
                     Text("文本分类")
@@ -37,10 +41,12 @@ struct TextAnalysisView: View {
 
 struct SentimentAnalysisView: View {
     @EnvironmentObject var assistant: AIAssistant
+    @EnvironmentObject var keyboardManager: KeyboardManager
     @State private var inputText = ""
     @State private var sentimentResult: SentimentResult?
     @State private var isAnalyzing = false
     @State private var analysisHistory: [SentimentResult] = []
+    @FocusState private var isTextEditorFocused: Bool
     
     private let sampleTexts = [
         "今天天气真好，心情特别愉快！",
@@ -54,14 +60,38 @@ struct SentimentAnalysisView: View {
         VStack(spacing: 16) {
             // 输入区域
             VStack(alignment: .leading, spacing: 8) {
-                Text("待分析文本")
-                    .font(.headline)
+                HStack {
+                    Text("待分析文本")
+                        .font(.headline)
+                    
+                    Spacer()
+                    
+                    // 键盘关闭按钮
+                    if keyboardManager.isKeyboardVisible {
+                        Button(action: {
+                            keyboardManager.dismissKeyboard()
+                            isTextEditorFocused = false
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "keyboard.chevron.compact.down")
+                                Text("关闭键盘")
+                            }
+                            .font(.caption)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color(.systemGray5))
+                            .foregroundColor(.primary)
+                            .cornerRadius(12)
+                        }
+                    }
+                }
                 
                 TextEditor(text: $inputText)
                     .frame(minHeight: 100)
                     .padding(8)
                     .background(Color(.systemGray6))
                     .cornerRadius(8)
+                    .focused($isTextEditorFocused)
                 
                 // 示例文本
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -126,6 +156,7 @@ struct SentimentAnalysisView: View {
             Spacer()
         }
         .padding()
+        .keyboardAware()
     }
     
     private func analyzeSentiment() {
@@ -242,9 +273,11 @@ struct SentimentHistoryCard: View {
 
 struct KeywordExtractionView: View {
     @EnvironmentObject var assistant: AIAssistant
+    @EnvironmentObject var keyboardManager: KeyboardManager
     @State private var inputText = ""
     @State private var keywords: [String] = []
     @State private var isExtracting = false
+    @FocusState private var isTextEditorFocused: Bool
     
     private let sampleTexts = [
         "人工智能技术正在快速发展，机器学习和深度学习算法在各个领域都有广泛应用。",
@@ -256,14 +289,38 @@ struct KeywordExtractionView: View {
         VStack(spacing: 16) {
             // 输入区域
             VStack(alignment: .leading, spacing: 8) {
-                Text("待分析文本")
-                    .font(.headline)
+                HStack {
+                    Text("待分析文本")
+                        .font(.headline)
+                    
+                    Spacer()
+                    
+                    // 键盘关闭按钮
+                    if keyboardManager.isKeyboardVisible {
+                        Button(action: {
+                            keyboardManager.dismissKeyboard()
+                            isTextEditorFocused = false
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "keyboard.chevron.compact.down")
+                                Text("关闭键盘")
+                            }
+                            .font(.caption)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color(.systemGray5))
+                            .foregroundColor(.primary)
+                            .cornerRadius(12)
+                        }
+                    }
+                }
                 
                 TextEditor(text: $inputText)
                     .frame(minHeight: 120)
                     .padding(8)
                     .background(Color(.systemGray6))
                     .cornerRadius(8)
+                    .focused($isTextEditorFocused)
                 
                 // 示例文本
                 VStack(alignment: .leading, spacing: 8) {
@@ -329,6 +386,7 @@ struct KeywordExtractionView: View {
             Spacer()
         }
         .padding()
+        .keyboardAware()
     }
     
     private func extractKeywords() {
@@ -367,9 +425,11 @@ struct KeywordTag: View {
 
 struct TextClassificationView: View {
     @EnvironmentObject var assistant: AIAssistant
+    @EnvironmentObject var keyboardManager: KeyboardManager
     @State private var inputText = ""
     @State private var classification = ""
     @State private var isClassifying = false
+    @FocusState private var isTextEditorFocused: Bool
     
     private let categories = ["新闻", "科技", "娱乐", "体育", "财经", "教育", "健康", "旅游"]
     
@@ -377,14 +437,38 @@ struct TextClassificationView: View {
         VStack(spacing: 16) {
             // 输入区域
             VStack(alignment: .leading, spacing: 8) {
-                Text("待分类文本")
-                    .font(.headline)
+                HStack {
+                    Text("待分类文本")
+                        .font(.headline)
+                    
+                    Spacer()
+                    
+                    // 键盘关闭按钮
+                    if keyboardManager.isKeyboardVisible {
+                        Button(action: {
+                            keyboardManager.dismissKeyboard()
+                            isTextEditorFocused = false
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "keyboard.chevron.compact.down")
+                                Text("关闭键盘")
+                            }
+                            .font(.caption)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color(.systemGray5))
+                            .foregroundColor(.primary)
+                            .cornerRadius(12)
+                        }
+                    }
+                }
                 
                 TextEditor(text: $inputText)
                     .frame(minHeight: 120)
                     .padding(8)
                     .background(Color(.systemGray6))
                     .cornerRadius(8)
+                    .focused($isTextEditorFocused)
             }
             
             // 分类按钮
@@ -442,6 +526,7 @@ struct TextClassificationView: View {
             Spacer()
         }
         .padding()
+        .keyboardAware()
     }
     
     private func classifyText() {
