@@ -1,20 +1,7 @@
 import SwiftUI
 
-import FoundationModels
-
-enum ViewMode {
-    case basicTest
-    case realModelTest
-    case realAITest
-    case compilationTest
-    case fixVerification
-    case simpleFeatures
-    case fullFeatures
-}
-
 struct ContentView: View {
     @StateObject private var assistant = AIAssistant()
-    @State private var viewMode: ViewMode = .basicTest
     @State private var showSplashScreen = true
 
     var body: some View {
@@ -42,142 +29,213 @@ struct ContentView: View {
 
     private var mainContentView: some View {
         NavigationView {
-            VStack(spacing: 20) {
-                // 状态显示
-                VStack(spacing: 10) {
-                    Text("🚀 Apple Foundation Models Demo")
-                        .font(.title2)
-                        .fontWeight(.bold)
+            HomeView()
+                .environmentObject(assistant)
+        }
+        .navigationViewStyle(StackNavigationViewStyle())
+    }
+}
 
-                    HStack {
+// MARK: - 主页视图
+
+struct HomeView: View {
+    @EnvironmentObject var assistant: AIAssistant
+
+    // 功能列表数据
+    private let features: [FeatureItem] = [
+        FeatureItem(
+            title: "文本生成",
+            description: "智能文本创作与内容生成",
+            icon: "doc.text",
+            color: .blue,
+            destinationType: .textGeneration
+        ),
+        FeatureItem(
+            title: "语言翻译",
+            description: "多语言智能翻译服务",
+            icon: "globe",
+            color: .green,
+            destinationType: .translation
+        ),
+        FeatureItem(
+            title: "内容摘要",
+            description: "智能文本摘要与提取",
+            icon: "doc.plaintext",
+            color: .orange,
+            destinationType: .contentProcessing
+        ),
+        FeatureItem(
+            title: "智能对话",
+            description: "AI 助手对话交流",
+            icon: "bubble.left.and.bubble.right",
+            color: .purple,
+            destinationType: .chat
+        ),
+        FeatureItem(
+            title: "文本分析",
+            description: "情感分析与关键词提取",
+            icon: "chart.bar.doc.horizontal",
+            color: .red,
+            destinationType: .textAnalysis
+        ),
+        FeatureItem(
+            title: "智能笔记",
+            description: "AI 增强的笔记管理",
+            icon: "note.text",
+            color: .mint,
+            destinationType: .smartNotes
+        )
+    ]
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                // 头部状态
+                headerSection
+
+                // 功能网格
+                featuresGrid
+
+                Spacer(minLength: 20)
+            }
+            .padding()
+        }
+        .navigationTitle("AI 助手")
+        .navigationBarTitleDisplayMode(.large)
+    }
+
+    // MARK: - 视图组件
+
+    private var headerSection: some View {
+        VStack(spacing: 12) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Apple Foundation Models")
+                        .font(.title3)
+                        .fontWeight(.semibold)
+
+                    HStack(spacing: 8) {
                         Circle()
                             .fill(assistant.isModelLoaded ? Color.green : Color.orange)
-                            .frame(width: 12, height: 12)
+                            .frame(width: 8, height: 8)
 
-                        Text(assistant.isModelLoaded ? "模型已加载" : "模型加载中...")
-                            .font(.body)
-                    }
-
-                    if assistant.isProcessing {
-                        ProgressView("正在处理...")
-                            .progressViewStyle(CircularProgressViewStyle())
-                    }
-
-                    if let error = assistant.lastError {
-                        Text("错误: \(error)")
-                            .foregroundColor(.red)
+                        Text(assistant.isModelLoaded ? "就绪" : "加载中...")
                             .font(.caption)
+                            .foregroundColor(.secondary)
                     }
                 }
-                .padding()
-                .background(Color(.systemGray6))
-                .cornerRadius(12)
-                .padding()
 
-                // 切换按钮
-                VStack(spacing: 12) {
-                    HStack(spacing: 8) {
-                        Button("基础测试") {
-                            viewMode = .basicTest
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(viewMode == .basicTest ? Color.blue : Color.gray.opacity(0.3))
-                        .foregroundColor(viewMode == .basicTest ? .white : .primary)
-                        .cornerRadius(6)
-                        .font(.caption)
+                Spacer()
 
-                        Button("真实模型") {
-                            viewMode = .realModelTest
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 6)
-                        .background(viewMode == .realModelTest ? Color.purple : Color.gray.opacity(0.3))
-                        .foregroundColor(viewMode == .realModelTest ? .white : .primary)
-                        .cornerRadius(6)
-                        .font(.caption)
-
-                        Button("🧠真实AI") {
-                            viewMode = .realAITest
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 6)
-                        .background(viewMode == .realAITest ? Color.indigo : Color.gray.opacity(0.3))
-                        .foregroundColor(viewMode == .realAITest ? .white : .primary)
-                        .cornerRadius(6)
-                        .font(.caption)
-                    }
-
-                    HStack(spacing: 8) {
-                        Button("编译测试") {
-                            viewMode = .compilationTest
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 6)
-                        .background(viewMode == .compilationTest ? Color.red : Color.gray.opacity(0.3))
-                        .foregroundColor(viewMode == .compilationTest ? .white : .primary)
-                        .cornerRadius(6)
-                        .font(.caption)
-
-                        Button("修复验证") {
-                            viewMode = .fixVerification
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 6)
-                        .background(viewMode == .fixVerification ? Color.mint : Color.gray.opacity(0.3))
-                        .foregroundColor(viewMode == .fixVerification ? .white : .primary)
-                        .cornerRadius(6)
-                        .font(.caption)
-
-                        Button("简化功能") {
-                            viewMode = .simpleFeatures
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 6)
-                        .background(viewMode == .simpleFeatures ? Color.green : Color.gray.opacity(0.3))
-                        .foregroundColor(viewMode == .simpleFeatures ? .white : .primary)
-                        .cornerRadius(6)
-                        .font(.caption)
-                    }
-
-                    Button("完整功能") {
-                        viewMode = .fullFeatures
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(viewMode == .fullFeatures ? Color.orange : Color.gray.opacity(0.3))
-                    .foregroundColor(viewMode == .fullFeatures ? .white : .primary)
-                    .cornerRadius(6)
-                    .font(.caption)
-                }
-
-                // 内容区域
-                switch viewMode {
-                case .basicTest:
-                    SimpleTestView()
-                        .environmentObject(assistant)
-                case .realModelTest:
-                    RealModelTestView()
-                        .environmentObject(assistant)
-                case .realAITest:
-                    RealAITestView()
-                        .environmentObject(assistant)
-                case .compilationTest:
-                    CompilationTestView()
-                        .environmentObject(assistant)
-                case .fixVerification:
-                    FixVerificationView()
-                        .environmentObject(assistant)
-                case .simpleFeatures:
-                    SimpleFeatureListView()
-                        .environmentObject(assistant)
-                case .fullFeatures:
-                    FeatureListView()
-                        .environmentObject(assistant)
+                if assistant.isProcessing {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .blue))
+                        .scaleEffect(0.8)
                 }
             }
+
+            if let error = assistant.lastError {
+                HStack {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.orange)
+                        .font(.caption)
+
+                    Text(error)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .lineLimit(2)
+
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color.orange.opacity(0.1))
+                .cornerRadius(8)
+            }
         }
-        .navigationTitle("AI Demo")
+        .padding()
+        .background(Color(.systemBackground))
+        .cornerRadius(16)
+        .shadow(color: .black.opacity(0.05), radius: 8, x: 0, y: 2)
+    }
+
+    private var featuresGrid: some View {
+        LazyVGrid(columns: [
+            GridItem(.flexible(), spacing: 16),
+            GridItem(.flexible(), spacing: 16)
+        ], spacing: 16) {
+            ForEach(features) { feature in
+                FeatureCard(feature: feature)
+            }
+        }
+
+    }
+}
+
+// MARK: - 功能卡片组件
+
+struct FeatureCard: View {
+    let feature: FeatureItem
+
+    var body: some View {
+        NavigationLink(destination: destinationView) {
+            VStack(spacing: 12) {
+                // 图标
+                ZStack {
+                    Circle()
+                        .fill(feature.color.opacity(0.15))
+                        .frame(width: 50, height: 50)
+
+                    Image(systemName: feature.icon)
+                        .font(.title2)
+                        .foregroundColor(feature.color)
+                }
+
+                // 文本内容
+                VStack(spacing: 4) {
+                    Text(feature.title)
+                        .font(.headline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.primary)
+                        .multilineTextAlignment(.center)
+
+                    Text(feature.description)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                }
+
+                Spacer()
+            }
+            .padding()
+            .frame(height: 140)
+            .background(Color(.systemBackground))
+            .cornerRadius(16)
+            .shadow(color: .black.opacity(0.05), radius: 8, x: 0, y: 2)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    @ViewBuilder
+    private var destinationView: some View {
+        switch feature.destinationType {
+        case .textGeneration:
+            TextGenerationView()
+        case .translation:
+            TranslationView()
+        case .contentProcessing:
+            ContentProcessingView()
+        case .chat:
+            ChatView()
+        case .textAnalysis:
+            TextAnalysisView()
+        case .smartNotes:
+            SmartNotesView()
+        default:
+            Text("功能开发中...")
+                .navigationTitle(feature.title)
+        }
     }
 }
 
@@ -347,64 +405,7 @@ struct SplashScreenView: View {
     }
 }
 
-struct SimpleTestView: View {
-    @EnvironmentObject var assistant: AIAssistant
-    @StateObject private var textManager = TextGenerationManager()
-    @State private var testResult = ""
 
-    var body: some View {
-        VStack(spacing: 16) {
-            Text("基础功能测试")
-                .font(.headline)
-
-            Button("测试文本生成") {
-                testTextGeneration()
-            }
-            .disabled(!assistant.isModelLoaded || assistant.isProcessing || textManager.isProcessing)
-            .buttonStyle(.borderedProminent)
-
-            if !testResult.isEmpty {
-                Text("测试结果:")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-
-                Text(testResult)
-                    .padding()
-                    .background(Color.blue.opacity(0.1))
-                    .cornerRadius(8)
-            }
-
-            Spacer()
-        }
-        .padding()
-    }
-
-    private func testTextGeneration() {
-        Task {
-            do {
-                let result = try await generateText()
-                await MainActor.run {
-                    testResult = result
-                }
-            } catch {
-                print("Error: \(error)")
-                await MainActor.run {
-                    testResult = "生成失败: \(error.localizedDescription)"
-                }
-            }
-        }
-    }
-
-    func generateText() async throws -> String {
-        let instructions = """
-            Suggest five related topics. Keep them concise (three to seven words) and make sure they \
-            build naturally from the person's topic.
-            """
-
-        let prompt = "Making homemade bread"
-        return try await textManager.generateText(instructions: instructions, prompt: prompt)
-    }
-}
 
 #Preview {
     ContentView()

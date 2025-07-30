@@ -40,13 +40,12 @@ struct TextGenerationView: View {
 }
 
 struct CreativeWritingView: View {
-    @EnvironmentObject var assistant: AIAssistant
     @EnvironmentObject var keyboardManager: KeyboardManager
+    @StateObject private var textManager = TextGenerationManager()
     @State private var prompt = ""
     @State private var generatedText = ""
-    @State private var isGenerating = false
     @FocusState private var isTextEditorFocused: Bool
-    
+
     private let promptSuggestions = [
         "写一个关于未来科技的短故事",
         "创作一首关于春天的诗歌",
@@ -114,11 +113,11 @@ struct CreativeWritingView: View {
             // 生成按钮
             Button(action: generateCreativeText) {
                 HStack {
-                    if isGenerating {
+                    if textManager.isProcessing {
                         ProgressView()
                             .scaleEffect(0.8)
                     }
-                    Text(isGenerating ? "生成中..." : "开始创作")
+                    Text(textManager.isProcessing ? "生成中..." : "开始创作")
                 }
                 .frame(maxWidth: .infinity)
                 .padding()
@@ -126,7 +125,10 @@ struct CreativeWritingView: View {
                 .foregroundColor(.white)
                 .cornerRadius(10)
             }
-            .disabled(prompt.isEmpty || isGenerating)
+            .disabled(prompt.isEmpty || textManager.isProcessing)
+            .onTapGesture {
+                keyboardManager.dismissKeyboard()
+            }
             
             // 结果区域
             if !generatedText.isEmpty {
@@ -169,34 +171,30 @@ struct CreativeWritingView: View {
     }
     
     private func generateCreativeText() {
-        isGenerating = true
-        
+        keyboardManager.dismissKeyboard()
+
         Task {
-            if let result = await assistant.generateText(
-                prompt: prompt,
-                maxTokens: 300,
-                temperature: 0.8
-            ) {
+            do {
+                let result = try await textManager.generateCreativeContent(
+                    prompt: prompt,
+                    style: "创意"
+                )
                 await MainActor.run {
                     generatedText = result
-                    isGenerating = false
                 }
-            } else {
-                await MainActor.run {
-                    isGenerating = false
-                }
+            } catch {
+                print("创意文本生成失败: \(error)")
             }
         }
     }
 }
 
 struct TextSummaryView: View {
-    @EnvironmentObject var assistant: AIAssistant
     @EnvironmentObject var keyboardManager: KeyboardManager
+    @StateObject private var textManager = TextGenerationManager()
     @State private var inputText = ""
     @State private var summary = ""
     @State private var maxLength = 100
-    @State private var isSummarizing = false
     @FocusState private var isTextEditorFocused: Bool
     
     var body: some View {
@@ -255,11 +253,11 @@ struct TextSummaryView: View {
             // 生成按钮
             Button(action: generateSummary) {
                 HStack {
-                    if isSummarizing {
+                    if textManager.isProcessing {
                         ProgressView()
                             .scaleEffect(0.8)
                     }
-                    Text(isSummarizing ? "生成中..." : "生成摘要")
+                    Text(textManager.isProcessing ? "生成中..." : "生成摘要")
                 }
                 .frame(maxWidth: .infinity)
                 .padding()
@@ -267,7 +265,10 @@ struct TextSummaryView: View {
                 .foregroundColor(.white)
                 .cornerRadius(10)
             }
-            .disabled(inputText.isEmpty || isSummarizing)
+            .disabled(inputText.isEmpty || textManager.isProcessing)
+            .onTapGesture {
+                keyboardManager.dismissKeyboard()
+            }
             
             // 摘要结果
             if !summary.isEmpty {
@@ -307,29 +308,29 @@ struct TextSummaryView: View {
     }
     
     private func generateSummary() {
-        isSummarizing = true
-        
+        keyboardManager.dismissKeyboard()
+
         Task {
-            if let result = await assistant.summarizeText(inputText, maxLength: maxLength) {
+            do {
+                let result = try await textManager.generateSummary(
+                    for: inputText,
+                    maxLength: maxLength
+                )
                 await MainActor.run {
                     summary = result
-                    isSummarizing = false
                 }
-            } else {
-                await MainActor.run {
-                    isSummarizing = false
-                }
+            } catch {
+                print("摘要生成失败: \(error)")
             }
         }
     }
 }
 
 struct TextCompletionView: View {
-    @EnvironmentObject var assistant: AIAssistant
     @EnvironmentObject var keyboardManager: KeyboardManager
+    @StateObject private var textManager = TextGenerationManager()
     @State private var inputText = ""
     @State private var completedText = ""
-    @State private var isCompleting = false
     @FocusState private var isTextEditorFocused: Bool
     
     private let completionPrompts = [
@@ -399,11 +400,11 @@ struct TextCompletionView: View {
             // 补全按钮
             Button(action: completeText) {
                 HStack {
-                    if isCompleting {
+                    if textManager.isProcessing {
                         ProgressView()
                             .scaleEffect(0.8)
                     }
-                    Text(isCompleting ? "补全中..." : "智能补全")
+                    Text(textManager.isProcessing ? "补全中..." : "智能补全")
                 }
                 .frame(maxWidth: .infinity)
                 .padding()
@@ -411,7 +412,10 @@ struct TextCompletionView: View {
                 .foregroundColor(.white)
                 .cornerRadius(10)
             }
-            .disabled(inputText.isEmpty || isCompleting)
+            .disabled(inputText.isEmpty || textManager.isProcessing)
+            .onTapGesture {
+                keyboardManager.dismissKeyboard()
+            }
             
             // 补全结果
             if !completedText.isEmpty {
@@ -464,24 +468,24 @@ struct TextCompletionView: View {
     }
     
     private func completeText() {
-        isCompleting = true
-        
-        let prompt = "请继续完成以下文本，保持风格一致：\n\n\(inputText)"
-        
+        keyboardManager.dismissKeyboard()
+
+        let instructions = """
+            请继续完成以下文本，保持风格一致，内容自然流畅。
+            只返回续写的部分，不要重复原文。
+            """
+
         Task {
-            if let result = await assistant.generateText(
-                prompt: prompt,
-                maxTokens: 200,
-                temperature: 0.7
-            ) {
+            do {
+                let result = try await textManager.generateText(
+                    instructions: instructions,
+                    prompt: inputText
+                )
                 await MainActor.run {
                     completedText = result
-                    isCompleting = false
                 }
-            } else {
-                await MainActor.run {
-                    isCompleting = false
-                }
+            } catch {
+                print("文本补全失败: \(error)")
             }
         }
     }

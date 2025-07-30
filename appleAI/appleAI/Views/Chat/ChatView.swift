@@ -1,11 +1,10 @@
 import SwiftUI
 
 struct ChatView: View {
-    @EnvironmentObject var assistant: AIAssistant
+    @StateObject private var textManager = TextGenerationManager()
     @StateObject private var keyboardManager = KeyboardManager()
     @State private var messages: [ChatMessage] = []
     @State private var inputText = ""
-    @State private var isLoading = false
     @State private var showingClearAlert = false
     
     private let quickPrompts = [
@@ -37,7 +36,7 @@ struct ChatView: View {
                         }
                         
                         // 加载指示器
-                        if isLoading {
+                        if textManager.isProcessing {
                             HStack {
                                 ProgressView()
                                     .scaleEffect(0.8)
@@ -53,15 +52,15 @@ struct ChatView: View {
                 }
                 .onChange(of: messages.count) { _ in
                     withAnimation(.easeOut(duration: 0.3)) {
-                        if isLoading {
+                        if textManager.isProcessing {
                             proxy.scrollTo("loading", anchor: .bottom)
                         } else if let lastMessage = messages.last {
                             proxy.scrollTo(lastMessage.id, anchor: .bottom)
                         }
                     }
                 }
-                .onChange(of: isLoading) { loading in
-                    if loading {
+                .onChange(of: textManager.isProcessing) { processing in
+                    if processing {
                         withAnimation(.easeOut(duration: 0.3)) {
                             proxy.scrollTo("loading", anchor: .bottom)
                         }
@@ -74,7 +73,7 @@ struct ChatView: View {
             // 输入区域
             ChatInputView(
                 inputText: $inputText,
-                isLoading: isLoading,
+                isLoading: textManager.isProcessing,
                 onSend: sendMessage
             )
             .environmentObject(keyboardManager)
@@ -110,43 +109,52 @@ struct ChatView: View {
     
     private func sendMessage() {
         guard !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        
+
         let userMessage = ChatMessage(
             content: inputText,
             isUser: true
         )
-        
+
         messages.append(userMessage)
         let prompt = inputText
         inputText = ""
-        isLoading = true
-        
+        keyboardManager.dismissKeyboard()
+
         Task {
-            if let response = await assistant.generateText(
-                prompt: prompt,
-                maxTokens: 200,
-                temperature: 0.7
-            ) {
+            do {
+                let response = try await textManager.generateConversationReply(
+                    to: prompt,
+                    context: getConversationContext()
+                )
+
                 let aiMessage = ChatMessage(
                     content: response,
                     isUser: false
                 )
-                
+
                 await MainActor.run {
                     messages.append(aiMessage)
-                    isLoading = false
                 }
-            } else {
+            } catch {
                 await MainActor.run {
                     let errorMessage = ChatMessage(
                         content: "抱歉，我现在无法回应。请稍后再试。",
                         isUser: false
                     )
                     messages.append(errorMessage)
-                    isLoading = false
                 }
+                print("对话生成失败: \(error)")
             }
         }
+    }
+
+    private func getConversationContext() -> String {
+        // 获取最近几条消息作为上下文
+        let recentMessages = messages.suffix(4)
+        return recentMessages.map { message in
+            let sender = message.isUser ? "用户" : "助手"
+            return "\(sender): \(message.content)"
+        }.joined(separator: "\n")
     }
     
     private func exportChat() {
