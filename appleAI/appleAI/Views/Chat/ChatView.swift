@@ -1,11 +1,12 @@
 import SwiftUI
 
 struct ChatView: View {
-    @StateObject private var textManager = TextGenerationManager()
+    @EnvironmentObject var assistant: AIAssistant
     @StateObject private var keyboardManager = KeyboardManager()
     @State private var messages: [ChatMessage] = []
     @State private var inputText = ""
     @State private var showingClearAlert = false
+    @State private var isProcessing = false
     
     private let quickPrompts = [
         "你好，请介绍一下自己",
@@ -36,7 +37,7 @@ struct ChatView: View {
                         }
                         
                         // 加载指示器
-                        if textManager.isProcessing {
+                        if isProcessing {
                             HStack {
                                 ProgressView()
                                     .scaleEffect(0.8)
@@ -52,14 +53,14 @@ struct ChatView: View {
                 }
                 .onChange(of: messages.count) { _ in
                     withAnimation(.easeOut(duration: 0.3)) {
-                        if textManager.isProcessing {
+                        if isProcessing {
                             proxy.scrollTo("loading", anchor: .bottom)
                         } else if let lastMessage = messages.last {
                             proxy.scrollTo(lastMessage.id, anchor: .bottom)
                         }
                     }
                 }
-                .onChange(of: textManager.isProcessing) { processing in
+                .onChange(of: isProcessing) { processing in
                     if processing {
                         withAnimation(.easeOut(duration: 0.3)) {
                             proxy.scrollTo("loading", anchor: .bottom)
@@ -73,7 +74,7 @@ struct ChatView: View {
             // 输入区域
             ChatInputView(
                 inputText: $inputText,
-                isLoading: textManager.isProcessing,
+                isLoading: isProcessing,
                 onSend: sendMessage
             )
             .environmentObject(keyboardManager)
@@ -119,26 +120,39 @@ struct ChatView: View {
         let prompt = inputText
         inputText = ""
         keyboardManager.dismissKeyboard()
+        isProcessing = true
 
         Task {
             do {
-                let response = try await textManager.generateConversationReply(
-                    to: prompt,
-                    context: getConversationContext()
-                )
+                // 使用正确的 LanguageModelSession API
+                let context = getConversationContext()
+                let instructions = """
+                你是一个友好、有帮助的AI助手。请根据用户的消息生成自然、有用的回复。
+                \(context.isEmpty ? "" : "对话上下文：\(context)")
+                回复要求：
+                1. 保持回复简洁、相关且有帮助
+                2. 语气友好自然
+                3. 如果不确定，可以诚实地表达不确定性
+                4. 提供有价值的信息和建议
+                """
+                
+                let session = LanguageModelSession(instructions: instructions)
+                let response = try await session.respond(to: prompt)
 
                 let aiMessage = ChatMessage(
-                    content: response,
+                    content: response.content,
                     isUser: false
                 )
 
                 await MainActor.run {
+                    isProcessing = false
                     messages.append(aiMessage)
                 }
             } catch {
                 await MainActor.run {
+                    isProcessing = false
                     let errorMessage = ChatMessage(
-                        content: "抱歉，我现在无法回应。请稍后再试。",
+                        content: "抱歉，我现在无法回应：\(error.localizedDescription)",
                         isUser: false
                     )
                     messages.append(errorMessage)

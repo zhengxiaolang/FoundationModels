@@ -1,13 +1,14 @@
 import SwiftUI
 
 struct TranslationView: View {
-    @StateObject private var textManager = TextGenerationManager()
+    @EnvironmentObject var assistant: AIAssistant
     @StateObject private var keyboardManager = KeyboardManager()
     @State private var inputText = ""
     @State private var translatedText = ""
     @State private var showResult = false
     @State private var selectedTargetLanguage: LanguageOption = .english
     @State private var detectedLanguage = "自动检测"
+    @State private var isTranslating = false
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
@@ -139,25 +140,25 @@ struct TranslationView: View {
                     // 翻译按钮
                     Button(action: translateText) {
                         HStack {
-                            if textManager.isProcessing {
+                            if isTranslating {
                                 ProgressView()
                                     .scaleEffect(0.8)
                                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
                             }
 
-                            Text(textManager.isProcessing ? "正在翻译..." : "🚀 开始翻译")
+                            Text(isTranslating ? "正在翻译..." : "🚀 开始翻译")
                                 .fontWeight(.semibold)
                         }
                         .frame(maxWidth: .infinity)
                         .padding()
                         .background(
-                            inputText.isEmpty || textManager.isProcessing ?
+                            inputText.isEmpty || isTranslating ?
                             Color.gray : Color.blue
                         )
                         .foregroundColor(.white)
                         .cornerRadius(12)
                     }
-                    .disabled(inputText.isEmpty || textManager.isProcessing)
+                    .disabled(inputText.isEmpty || isTranslating)
                     .padding(.horizontal)
                     .onTapGesture {
                         keyboardManager.dismissKeyboard()
@@ -236,7 +237,7 @@ struct TranslationView: View {
                 }
             }
         }
-        .keyboardAware()
+        .scrollViewKeyboardAware()
         .environmentObject(keyboardManager)
     }
     
@@ -244,23 +245,34 @@ struct TranslationView: View {
         guard !inputText.isEmpty else { return }
 
         keyboardManager.dismissKeyboard()
+        isTranslating = true
 
         Task {
             do {
-                let result = try await textManager.generateTranslation(
-                    text: inputText,
-                    to: selectedTargetLanguage.displayName
-                )
+                // 使用正确的 LanguageModelSession API
+                let instructions = """
+                请将以下文本翻译为\(selectedTargetLanguage.displayName)。
+                翻译要求：
+                1. 准确传达原意
+                2. 语言自然流畅
+                3. 符合目标语言的表达习惯
+                4. 保持原文的语气和风格
+                """
+                
+                let session = LanguageModelSession(instructions: instructions)
+                let response = try await session.respond(to: inputText)
 
                 await MainActor.run {
-                    translatedText = result
+                    isTranslating = false
+                    translatedText = response.content
                     withAnimation(.easeInOut(duration: 0.5)) {
                         showResult = true
                     }
                 }
             } catch {
                 await MainActor.run {
-                    translatedText = "翻译失败，请重试"
+                    isTranslating = false
+                    translatedText = "翻译失败：\(error.localizedDescription)"
                     showResult = true
                 }
                 print("翻译失败: \(error)")

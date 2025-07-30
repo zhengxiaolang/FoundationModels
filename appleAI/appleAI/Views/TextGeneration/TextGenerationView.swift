@@ -40,10 +40,11 @@ struct TextGenerationView: View {
 }
 
 struct CreativeWritingView: View {
+    @EnvironmentObject var assistant: AIAssistant
     @EnvironmentObject var keyboardManager: KeyboardManager
-    @StateObject private var textManager = TextGenerationManager()
     @State private var prompt = ""
     @State private var generatedText = ""
+    @State private var isGenerating = false
     @FocusState private var isTextEditorFocused: Bool
 
     private let promptSuggestions = [
@@ -114,11 +115,11 @@ struct CreativeWritingView: View {
                 // 生成按钮
                 Button(action: generateCreativeText) {
                     HStack {
-                        if textManager.isProcessing {
+                        if isGenerating {
                             ProgressView()
                                 .scaleEffect(0.8)
                         }
-                        Text(textManager.isProcessing ? "生成中..." : "开始创作")
+                        Text(isGenerating ? "生成中..." : "开始创作")
                     }
                     .frame(maxWidth: .infinity)
                     .padding()
@@ -126,7 +127,7 @@ struct CreativeWritingView: View {
                     .foregroundColor(.white)
                     .cornerRadius(10)
                 }
-                .disabled(prompt.isEmpty || textManager.isProcessing)
+                .disabled(prompt.isEmpty || isGenerating)
                 .onTapGesture {
                     keyboardManager.dismissKeyboard()
                 }
@@ -170,17 +171,32 @@ struct CreativeWritingView: View {
     
     private func generateCreativeText() {
         keyboardManager.dismissKeyboard()
+        isGenerating = true
 
         Task {
             do {
-                let result = try await textManager.generateCreativeContent(
-                    prompt: prompt,
-                    style: "创意"
-                )
+                // 使用正确的 LanguageModelSession API
+                let instructions = """
+                你是一个富有创意的写作助手。请根据用户的提示生成有趣、原创且富有想象力的内容。
+                创作要求：
+                1. 内容积极向上，富有创意
+                2. 文字生动有趣，引人入胜
+                3. 结构清晰，逻辑合理
+                4. 符合用户的创意需求
+                """
+                
+                let session = LanguageModelSession(instructions: instructions)
+                let response = try await session.respond(to: prompt)
+                
                 await MainActor.run {
-                    generatedText = result
+                    isGenerating = false
+                    generatedText = response.content
                 }
             } catch {
+                await MainActor.run {
+                    isGenerating = false
+                    generatedText = "生成失败：\(error.localizedDescription)"
+                }
                 print("创意文本生成失败: \(error)")
             }
         }
@@ -188,11 +204,12 @@ struct CreativeWritingView: View {
 }
 
 struct TextSummaryView: View {
+    @EnvironmentObject var assistant: AIAssistant
     @EnvironmentObject var keyboardManager: KeyboardManager
-    @StateObject private var textManager = TextGenerationManager()
     @State private var inputText = ""
     @State private var summary = ""
     @State private var maxLength = 100
+    @State private var isGenerating = false
     @FocusState private var isTextEditorFocused: Bool
     
     var body: some View {
@@ -252,19 +269,19 @@ struct TextSummaryView: View {
                 // 生成按钮
                 Button(action: generateSummary) {
                     HStack {
-                        if textManager.isProcessing {
+                        if isGenerating {
                             ProgressView()
                                 .scaleEffect(0.8)
                         }
-                        Text(textManager.isProcessing ? "生成中..." : "生成摘要")
+                        Text(isGenerating ? "生成中..." : "生成摘要")
                     }
                     .frame(maxWidth: .infinity)
                     .padding()
-                    .background(inputText.isEmpty ? Color.gray : Color.blue)
+                    .background(inputText.isEmpty ? Color.gray : Color.green)
                     .foregroundColor(.white)
                     .cornerRadius(10)
                 }
-                .disabled(inputText.isEmpty || textManager.isProcessing)
+                .disabled(inputText.isEmpty || isGenerating)
                 .onTapGesture {
                     keyboardManager.dismissKeyboard()
                 }
@@ -307,17 +324,32 @@ struct TextSummaryView: View {
     
     private func generateSummary() {
         keyboardManager.dismissKeyboard()
+        isGenerating = true
 
         Task {
             do {
-                let result = try await textManager.generateSummary(
-                    for: inputText,
-                    maxLength: maxLength
-                )
+                // 使用正确的 LanguageModelSession API
+                let instructions = """
+                请将以下文本总结为不超过\(maxLength)字的简洁摘要。
+                摘要要求：
+                1. 保留主要信息和核心观点
+                2. 语言简洁明了，逻辑清晰
+                3. 准确传达原文的主要内容
+                4. 字数控制在\(maxLength)字以内
+                """
+                
+                let session = LanguageModelSession(instructions: instructions)
+                let response = try await session.respond(to: inputText)
+                
                 await MainActor.run {
-                    summary = result
+                    isGenerating = false
+                    summary = response.content
                 }
             } catch {
+                await MainActor.run {
+                    isGenerating = false
+                    summary = "摘要生成失败：\(error.localizedDescription)"
+                }
                 print("摘要生成失败: \(error)")
             }
         }
@@ -325,10 +357,11 @@ struct TextSummaryView: View {
 }
 
 struct TextCompletionView: View {
+    @EnvironmentObject var assistant: AIAssistant
     @EnvironmentObject var keyboardManager: KeyboardManager
-    @StateObject private var textManager = TextGenerationManager()
     @State private var inputText = ""
     @State private var completedText = ""
+    @State private var isGenerating = false
     @FocusState private var isTextEditorFocused: Bool
     
     private let completionPrompts = [
@@ -399,11 +432,11 @@ struct TextCompletionView: View {
                 // 补全按钮
                 Button(action: completeText) {
                     HStack {
-                        if textManager.isProcessing {
+                        if isGenerating {
                             ProgressView()
                                 .scaleEffect(0.8)
                         }
-                        Text(textManager.isProcessing ? "补全中..." : "智能补全")
+                        Text(isGenerating ? "补全中..." : "智能补全")
                     }
                     .frame(maxWidth: .infinity)
                     .padding()
@@ -411,7 +444,7 @@ struct TextCompletionView: View {
                     .foregroundColor(.white)
                     .cornerRadius(10)
                 }
-                .disabled(inputText.isEmpty || textManager.isProcessing)
+                .disabled(inputText.isEmpty || isGenerating)
                 .onTapGesture {
                     keyboardManager.dismissKeyboard()
                 }
@@ -465,22 +498,32 @@ struct TextCompletionView: View {
     
     private func completeText() {
         keyboardManager.dismissKeyboard()
-
-        let instructions = """
-            请继续完成以下文本，保持风格一致，内容自然流畅。
-            只返回续写的部分，不要重复原文。
-            """
+        isGenerating = true
 
         Task {
             do {
-                let result = try await textManager.generateText(
-                    instructions: instructions,
-                    prompt: inputText
-                )
+                // 使用正确的 LanguageModelSession API
+                let instructions = """
+                请继续完成以下文本，保持风格一致，内容自然流畅。
+                续写要求：
+                1. 只返回续写的部分，不要重复原文
+                2. 风格与原文保持一致
+                3. 内容逻辑连贯，语言流畅
+                4. 适当延展原文的思路和内容
+                """
+                
+                let session = LanguageModelSession(instructions: instructions)
+                let response = try await session.respond(to: inputText)
+                
                 await MainActor.run {
-                    completedText = result
+                    isGenerating = false
+                    completedText = response.content
                 }
             } catch {
+                await MainActor.run {
+                    isGenerating = false
+                    completedText = "文本补全失败：\(error.localizedDescription)"
+                }
                 print("文本补全失败: \(error)")
             }
         }
