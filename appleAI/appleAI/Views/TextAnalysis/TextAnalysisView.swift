@@ -434,6 +434,15 @@ struct TextClassificationView: View {
     @State private var classification = ""
     @FocusState private var isTextEditorFocused: Bool
     
+    private let classificationSamples = [
+        "苹果公司发布了最新的iPhone 15系列，配备了全新的A17芯片。",
+        "梅西在世界杯决赛中打进关键进球，帮助阿根廷夺冠。",
+        "《阿凡达：水之道》票房突破20亿美元大关。",
+        "美联储宣布加息0.25个百分点，全球股市出现波动。",
+        "清华大学研究团队在量子计算领域取得重大突破。",
+        "地中海饮食有助于降低心血管疾病风险。"
+    ]
+    
     private let categories = ["新闻", "科技", "娱乐", "体育", "财经", "教育", "健康", "旅游"]
     
     var body: some View {
@@ -472,6 +481,25 @@ struct TextClassificationView: View {
                         .background(Color(.systemGray6))
                         .cornerRadius(8)
                         .focused($isTextEditorFocused)
+                    
+                    // 示例文本
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(classificationSamples, id: \.self) { sample in
+                                Button(sample) {
+                                    inputText = sample
+                                    keyboardManager.dismissKeyboard()
+                                }
+                                .font(.caption)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Color.purple.opacity(0.1))
+                                .foregroundColor(.purple)
+                                .cornerRadius(16)
+                            }
+                        }
+                        .padding(.horizontal)
+                    }
                 }
                 
                 // 分类按钮

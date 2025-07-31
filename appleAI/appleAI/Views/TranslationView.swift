@@ -10,6 +10,15 @@ struct TranslationView: View {
     @State private var selectedTargetLanguage: LanguageOption = .english
     @Environment(\.dismiss) private var dismiss
     
+    private let translationSamples = [
+        "Hello, how are you today?",
+        "今天天气真不错！",
+        "Technology is changing our world rapidly.",
+        "こんにちは、元気ですか？",
+        "Bonjour, comment allez-vous?",
+        "Learning languages opens new opportunities."
+    ]
+    
     var body: some View {
         NavigationView {
             ScrollView {
@@ -111,11 +120,23 @@ struct TranslationView: View {
                                     .stroke(Color.blue.opacity(0.3), lineWidth: 1)
                             )
                         
-                        if inputText.isEmpty {
-                            Text("例如：Hello, how are you today?")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .padding(.horizontal, 4)
+                        // 翻译示例
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(translationSamples, id: \.self) { sample in
+                                    Button(sample) {
+                                        inputText = sample
+                                        keyboardManager.dismissKeyboard()
+                                    }
+                                    .font(.caption)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(Color.blue.opacity(0.1))
+                                    .foregroundColor(.blue)
+                                    .cornerRadius(16)
+                                }
+                            }
+                            .padding(.horizontal)
                         }
                     }
                     .padding(.horizontal)
