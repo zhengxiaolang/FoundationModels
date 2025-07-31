@@ -1,4 +1,5 @@
 import SwiftUI
+import FoundationModels
 
 struct ContentProcessingView: View {
     @EnvironmentObject var assistant: AIAssistant
@@ -404,50 +405,105 @@ struct ContentProcessingTranslationView: View {
 
 struct FormatConversionView: View {
     @EnvironmentObject var assistant: AIAssistant
+    @EnvironmentObject var keyboardManager: KeyboardManager
     @State private var inputText = ""
     @State private var convertedText = ""
     @State private var selectedFormat = TextFormat.markdown
     @State private var isConverting = false
+    @FocusState private var isTextEditorFocused: Bool
+    
+    private let sampleTexts = [
+        "产品介绍\n\n苹果iPhone是一款智能手机，具有以下特点：\n- 高清摄像头\n- 快速处理器\n- 长续航电池\n\n价格：8999元",
+        "会议记录\n\n时间：2024年1月15日\n地点：会议室A\n参与者：张三、李四、王五\n\n讨论内容：\n1. 项目进展汇报\n2. 下月计划制定\n3. 预算分配讨论",
+        "员工信息\n\n姓名：张三\n部门：技术部\n职位：工程师\n工资：15000\n入职日期：2023-06-01\n\n姓名：李四\n部门：市场部\n职位：经理\n工资：18000\n入职日期：2022-03-15"
+    ]
     
     var body: some View {
-        VStack(spacing: 16) {
-            // 输入区域
-            VStack(alignment: .leading, spacing: 8) {
-                Text("原始文本")
-                    .font(.headline)
-                
-                TextEditor(text: $inputText)
-                    .frame(minHeight: 120)
-                    .padding(8)
-                    .background(Color(.systemGray6))
-                    .cornerRadius(8)
-            }
-            
-            // 格式选择
-            VStack(alignment: .leading, spacing: 8) {
-                Text("目标格式")
-                    .font(.headline)
-                
-                HStack(spacing: 12) {
-                    ForEach(TextFormat.allCases, id: \.self) { format in
-                        Button(format.displayName) {
-                            selectedFormat = format
+        ScrollView {
+            VStack(spacing: 16) {
+                // 输入区域
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("原始文本")
+                            .font(.headline)
+                        
+                        Spacer()
+                        
+                        // 键盘关闭按钮
+                        if keyboardManager.isKeyboardVisible {
+                            Button(action: {
+                                keyboardManager.dismissKeyboard()
+                                isTextEditorFocused = false
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "keyboard.chevron.compact.down")
+                                    Text("关闭键盘")
+                                }
+                                .font(.caption)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color(.systemGray5))
+                                .foregroundColor(.primary)
+                                .cornerRadius(12)
+                            }
                         }
-                        .font(.caption)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(
-                            selectedFormat == format ? Color.purple : Color(.systemGray6)
-                        )
-                        .foregroundColor(
-                            selectedFormat == format ? .white : .primary
-                        )
-                        .cornerRadius(16)
+                    }
+                    
+                    TextEditor(text: $inputText)
+                        .frame(minHeight: 120)
+                        .padding(8)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(8)
+                        .focused($isTextEditorFocused)
+                    
+                    // 示例文本
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(Array(sampleTexts.enumerated()), id: \.offset) { index, sample in
+                                Button("示例\(index + 1)") {
+                                    inputText = sample
+                                }
+                                .font(.caption)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Color.purple.opacity(0.1))
+                                .foregroundColor(.purple)
+                                .cornerRadius(16)
+                            }
+                        }
+                        .padding(.horizontal)
                     }
                 }
-            }
             
-            // 转换按钮
+                // 格式选择
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("目标格式")
+                        .font(.headline)
+                    
+                    // 格式描述
+                    Text(selectedFormat.description)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.bottom, 4)
+                    
+                    HStack(spacing: 12) {
+                        ForEach(TextFormat.allCases, id: \.self) { format in
+                            Button(format.displayName) {
+                                selectedFormat = format
+                            }
+                            .font(.caption)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(
+                                selectedFormat == format ? Color.purple : Color(.systemGray6)
+                            )
+                            .foregroundColor(
+                                selectedFormat == format ? .white : .primary
+                            )
+                            .cornerRadius(16)
+                        }
+                    }
+                }            // 转换按钮
             Button(action: convertFormat) {
                 HStack {
                     if isConverting {
@@ -463,6 +519,9 @@ struct FormatConversionView: View {
                 .cornerRadius(10)
             }
             .disabled(inputText.isEmpty || isConverting)
+            .onTapGesture {
+                keyboardManager.dismissKeyboard()
+            }
             
             // 转换结果
             if !convertedText.isEmpty {
@@ -499,34 +558,103 @@ struct FormatConversionView: View {
             Spacer()
         }
         .padding()
+        }
+        .scrollViewKeyboardAware()
     }
     
     private func convertFormat() {
         isConverting = true
         
-        let prompt = """
-        请将以下文本转换为\(selectedFormat.description)格式：
-        
-        \(inputText)
-        
-        转换后的\(selectedFormat.displayName)格式：
-        """
-        
         Task {
-            if let result = await assistant.generateText(
-                prompt: prompt,
-                maxTokens: inputText.count * 2,
-                temperature: 0.3
-            ) {
+            do {
+                // 根据不同格式使用专门的指令
+                let instructions = getInstructionsForFormat(selectedFormat)
+                
+                let session = LanguageModelSession(instructions: instructions)
+                let response = try await session.respond(to: inputText)
+                
                 await MainActor.run {
-                    convertedText = result
+                    convertedText = response.content
                     isConverting = false
                 }
-            } else {
+            } catch {
                 await MainActor.run {
+                    convertedText = "格式转换失败：\(error.localizedDescription)"
                     isConverting = false
                 }
+                print("格式转换失败: \(error)")
             }
+        }
+    }
+    
+    private func getInstructionsForFormat(_ format: TextFormat) -> String {
+        switch format {
+        case .markdown:
+            return """
+            你是一个专业的文档格式转换专家。请将用户提供的文本转换为标准的Markdown格式。
+            
+            转换规则：
+            1. 将标题转换为对应级别的Markdown标题（# ## ### 等）
+            2. 将列表转换为Markdown列表格式（- 或 1. ）
+            3. 强调文本使用 **粗体** 或 *斜体*
+            4. 代码片段使用 `代码` 或 ```代码块```
+            5. 链接使用 [文本](链接) 格式
+            6. 保持段落间的空行分隔
+            7. 只输出转换后的Markdown内容，不要添加解释
+            
+            请将以下内容转换为Markdown格式：
+            """
+            
+        case .html:
+            return """
+            你是一个专业的HTML转换专家。请将用户提供的文本转换为标准的HTML格式。
+            
+            转换规则：
+            1. 使用适当的HTML标签（<h1>-<h6>, <p>, <ul>, <ol>, <li>等）
+            2. 保持HTML语法正确，标签要正确闭合
+            3. 使用语义化的HTML标签
+            4. 强调文本使用<strong>或<em>标签
+            5. 代码使用<code>或<pre>标签
+            6. 链接使用<a href="">标签
+            7. 生成完整但简洁的HTML结构
+            8. 只输出HTML代码，不要添加解释
+            
+            请将以下内容转换为HTML格式：
+            """
+            
+        case .json:
+            return """
+            你是一个专业的JSON格式转换专家。请将用户提供的文本内容结构化为标准的JSON格式。
+            
+            转换规则：
+            1. 分析文本内容的结构和层次
+            2. 将内容转换为合理的JSON对象或数组
+            3. 使用恰当的键名（英文，采用camelCase命名）
+            4. 确保JSON格式正确，语法无误
+            5. 对于列表内容，使用JSON数组
+            6. 对于结构化信息，使用JSON对象
+            7. 字符串值要正确转义特殊字符
+            8. 只输出有效的JSON格式，不要添加解释
+            
+            请将以下内容转换为JSON格式：
+            """
+            
+        case .csv:
+            return """
+            你是一个专业的CSV格式转换专家。请将用户提供的文本转换为标准的CSV格式。
+            
+            转换规则：
+            1. 分析文本内容，识别表格化的信息
+            2. 第一行作为表头（列名）
+            3. 使用逗号分隔各列数据
+            4. 包含逗号或换行的字段用双引号包围
+            5. 双引号字段内的双引号要转义为两个双引号
+            6. 每行数据占一行
+            7. 保持数据的完整性和准确性
+            8. 只输出CSV格式的数据，不要添加解释
+            
+            请将以下内容转换为CSV格式：
+            """
         }
     }
 }
@@ -548,10 +676,19 @@ enum TextFormat: String, CaseIterable {
     
     var description: String {
         switch self {
-        case .markdown: return "Markdown标记语言"
-        case .html: return "HTML网页标记"
-        case .json: return "JSON数据格式"
-        case .csv: return "CSV表格格式"
+        case .markdown: return "Markdown标记语言，用于文档编写"
+        case .html: return "HTML网页标记语言"
+        case .json: return "JSON数据交换格式"
+        case .csv: return "CSV表格数据格式"
+        }
+    }
+    
+    var fileExtension: String {
+        switch self {
+        case .markdown: return ".md"
+        case .html: return ".html"
+        case .json: return ".json"
+        case .csv: return ".csv"
         }
     }
 }
