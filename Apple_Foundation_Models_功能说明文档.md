@@ -60,93 +60,43 @@ let translation = try await translationSession.respond(to: "翻译：\(text)")
 
 ## ⚡ Foundation Models 技术特性
 
-### 🔧 核心技术架构
-```swift
-import FoundationModels
+### 🎯 如何使用
+Foundation Models 让 AI 功能集成变得非常简单：
 
-// Foundation Models 核心实现
-class AITextProcessor: ObservableObject {
-    func processWithFoundationModels(prompt: String, task: AITask) async throws -> String {
-        let session = LanguageModelSession(instructions: task.instructions)
-        let response = try await session.respond(to: prompt)
-        return response.content
-    }
-    
-    // 实际使用示例
-    func handleUserRequest(_ userInput: String) async {
-        do {
-            // userInput 可能来自：
-            // - UI输入框: let userInput = inputTextField.text ?? ""
-            // - 语音识别: let userInput = speechRecognitionResult
-            // - 其他数据源
-            
-            let aiTask = AITask(instructions: "你是专业的文本助手")
-            let result = try await processWithFoundationModels(prompt: userInput, task: aiTask)
-            
-            // 处理AI返回的结果
-            DispatchQueue.main.async {
-                // 更新UI显示结果
-                self.resultText = result
-            }
-        } catch {
-            print("AI处理错误: \(error)")
-        }
-    }
-}
+1. **设定角色**：告诉 AI 它要扮演什么角色（比如翻译专家、写作助手）
+2. **输入内容**：提供需要处理的文本内容
+3. **获得结果**：AI 自动处理并返回结果
+
+### 🔧 核心技术实现
+
+**基础使用方式：**
+```swift
+// 1. 创建AI会话，设定角色
+let session = LanguageModelSession(instructions: "你是专业的写作助手")
+
+// 2. 发送用户输入，获取AI回复
+let response = try await session.respond(to: "用户的问题或需求")
+
+// 3. 获取处理结果
+let result = response.content
 ```
 
-### 📚 LanguageModelSession 详细说明
-
-**核心组件解析：**
-
-#### 1. 初始化参数
+**实际应用示例：**
 ```swift
-LanguageModelSession(instructions: String)
-```
-- **instructions**：定义AI助手的角色、行为规范和回应风格
-- **作用**：相当于给AI设定"人格"和"专业领域"
-- **重要性**：这是控制AI行为的核心参数
+// 文本生成
+let writerSession = LanguageModelSession(instructions: "你是创意写作专家")
+let article = try await writerSession.respond(to: "写一篇关于AI的文章")
 
-#### 2. 响应方法
-```swift
-func respond(to prompt: String) async throws -> LanguageModelResponse
-```
-- **prompt**：用户的具体输入内容或问题
-- **返回值**：`LanguageModelResponse` 对象，包含 `content` 属性
-- **异步特性**：使用 `async/await` 确保UI不阻塞
-
-#### 3. 最佳实践示例
-```swift
-// 专业指令编写模板
-let instructions = """
-角色定义：你是[具体角色]
-任务描述：[清晰的任务说明]
-行为规范：
-1. [具体要求1]
-2. [具体要求2]
-3. [具体要求3]
-输出格式：[期望的输出格式]
-限制条件：[需要避免的内容]
-"""
-
-// userInput 使用示例
-let userInput = "请帮我写一篇关于人工智能的文章"  // 用户的具体问题或请求
-// 或者从UI控件获取: let userInput = textField.text ?? ""
-// 或者从函数参数传入: func processText(_ userInput: String) async { ... }
-
-// 实际应用
-let session = LanguageModelSession(instructions: instructions)
-let response = try await session.respond(to: userInput)
-let result = response.content  // 获取AI生成的回复内容
+// 翻译功能
+let translatorSession = LanguageModelSession(instructions: "你是专业翻译助手")
+let translation = try await translatorSession.respond(to: "翻译：Hello World")
 ```
 
-#### 4. userInput 参数详解
-- **数据类型**：`String` - 用户输入的文本内容
-- **内容来源**：
-  - UI文本框输入：`textView.text`、`textField.text`
-  - 函数参数传递：作为方法参数接收
-  - 预设文本：直接赋值字符串
-- **使用场景**：承载用户的具体需求、问题或待处理的文本内容
+### 🔧 核心优势
+- **简单易用**：几行代码就能实现强大的 AI 功能
+- **响应迅速**：本地处理，无需等待网络传输
+- **功能丰富**：支持文本生成、翻译、分析等多种任务
+- **隐私安全**：所有处理都在设备本地完成
 
 ### 📋 支持的AI任务类型
 - **文本生成** (Text Generation)
