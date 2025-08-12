@@ -247,10 +247,10 @@ struct HomeFeatureCard: View {
             SmartNotesView()
                 .environmentObject(assistant)
         case .toolCall:
-            ToolCallView()
+            ToolCallWrapper()
                 .environmentObject(assistant)
         default:
-            Text("功能开发中...")
+            Text("Feature under development...")
                 .navigationTitle(feature.title)
         }
     }
@@ -422,7 +422,16 @@ struct SplashScreenView: View {
     }
 }
 
+// MARK: - Tool Call Wrapper
 
+struct ToolCallWrapper: View {
+    @EnvironmentObject var assistant: AIAssistant
+
+    var body: some View {
+        ToolCallView()
+            .environmentObject(assistant)
+    }
+}
 
 #Preview {
     ContentView()

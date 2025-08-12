@@ -6,6 +6,104 @@
 //
 
 import SwiftUI
+import FoundationModels
+
+// MARK: - Tool Implementations following Apple Intelligence Demo Pattern
+
+struct WeatherTool: Tool {
+    let name = "getWeather"
+    let description = "Retrieve the latest weather information for a city"
+
+    @Generable
+    struct Arguments {
+        @Guide(description: "The city to get weather information for")
+        var city: String
+    }
+
+    struct Forecast: Encodable {
+        var city: String
+        var temperature: Int
+    }
+
+    func call(arguments: Arguments) async throws -> String {
+        // Get a random temperature value. Use `WeatherKit` to get
+        // a temperature for the city.
+        let temperature = Int.random(in: 30...100)
+        let formattedResult = """
+        The forecast for '\(arguments.city)' is '\(temperature)' \
+        degrees Fahrenheit.
+        """
+        return formattedResult
+    }
+}
+
+struct CalculatorTool: Tool {
+    let name = "calculate"
+    let description = "Perform mathematical calculations"
+
+    @Generable
+    struct Arguments {
+        @Guide(description: "The mathematical expression to evaluate")
+        var expression: String
+    }
+
+    func call(arguments: Arguments) async throws -> String {
+        // Simple calculation using NSExpression
+        let cleanExpression = arguments.expression.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        do {
+            let nsExpression = NSExpression(format: cleanExpression)
+            if let result = nsExpression.expressionValue(with: nil, context: nil) as? NSNumber {
+                return "The result of '\(cleanExpression)' is \(result.doubleValue)"
+            } else {
+                throw CalculationError.invalidExpression
+            }
+        } catch {
+            throw CalculationError.evaluationFailed
+        }
+    }
+}
+
+struct TranslatorTool: Tool {
+    let name = "translate"
+    let description = "Translate text between languages"
+
+    @Generable
+    struct Arguments {
+        @Guide(description: "The text to translate")
+        var text: String
+    }
+
+    func call(arguments: Arguments) async throws -> String {
+        // Simple translation simulation
+        let text = arguments.text
+        let isEnglish = text.range(of: "[a-zA-Z]", options: .regularExpression) != nil
+
+        if isEnglish {
+            return "Translation to Chinese: This is the translated text - \(text)"
+        } else {
+            return "Translation to English: This is the translated text - \(text)"
+        }
+    }
+}
+
+// MARK: - Error Types
+
+enum CalculationError: Error, LocalizedError {
+    case invalidExpression
+    case evaluationFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidExpression:
+            return "Invalid mathematical expression"
+        case .evaluationFailed:
+            return "Failed to evaluate expression"
+        }
+    }
+}
+
+// MARK: - Tool Call Implementation using Apple FoundationModels Framework
 
 struct ToolCallView: View {
     @EnvironmentObject var assistant: AIAssistant
@@ -18,55 +116,51 @@ struct ToolCallView: View {
     @State private var alertMessage = ""
     @FocusState private var isInputFocused: Bool
     
-    // 为每个工具添加预设数据选项
+    // Natural language examples for quick selection
     private var quickSelectionData: [String] {
-        switch selectedTool {
-        case .weather:
-            return ["北京", "上海", "广州", "深圳", "杭州", "成都", "西安", "青岛"]
-        case .calculator:
-            return ["2+3*4", "100/5-8", "(25+15)*2", "50*0.8+20", "365/12", "sqrt(144)"]
-        case .translator:
-            return ["Hello, how are you?", "今天天气真不错", "I love programming", "学习使人进步", "Thank you very much", "祝你好运"]
-        case .search:
-            return ["人工智能", "SwiftUI教程", "iOS开发", "机器学习", "Swift编程", "Apple新产品"]
-        case .qrGenerator:
-            return ["https://apple.com", "欢迎使用我的应用", "联系方式：example@email.com", "微信号：example123", "Hello World", "扫码关注"]
-        case .colorPalette:
-            return ["春天花园", "夏日海滩", "秋天森林", "冬日雪景", "现代科技", "复古怀旧", "清新自然", "商务专业"]
-        }
+        return [
+            "What's the weather in Beijing?",
+            "Calculate 25 * 4 + 10",
+            "Translate 'Hello world' to Chinese",
+            "Search for Swift programming tutorials",
+            "Generate QR code for https://apple.com",
+            "Create a color palette for ocean theme",
+            "Is it hotter in Boston or New York?",
+            "What's 15% of 200?"
+        ]
     }
     
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
-                // 工具选择器
+                // Tool selector
                 toolSelector
-                
-                // 输入区域
+
+                // Input section
                 inputSection
-                
-                // 操作按钮
+
+                // Action button
                 actionButton
-                
-                // 结果显示
+
+                // Results section
                 resultsSection
             }
             .padding()
         }
-        .navigationTitle("Tool Call 演示")
+        .navigationTitle("Tool Call Demo")
         .navigationBarTitleDisplayMode(.large)
-        .alert("提示", isPresented: $showAlert) {
-            Button("确定") { }
+        .alert("Alert", isPresented: $showAlert) {
+            Button("OK") { }
         } message: {
             Text(alertMessage)
         }
     }
     
-    // MARK: - 视图组件
-    
+    // MARK: - View Components
+
     private var toolSelector: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("选择工具")
+            Text("Select Tool")
                 .font(.headline)
                 .foregroundColor(.primary)
             
@@ -79,7 +173,7 @@ struct ToolCallView: View {
                         tool: tool,
                         isSelected: selectedTool == tool
                     ) {
-                        // 选择工具时清除上一次的结果
+                        // Clear previous results when selecting a tool
                         withAnimation(.easeInOut) {
                             results.removeAll()
                         }
@@ -98,12 +192,12 @@ struct ToolCallView: View {
     private var inputSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("输入参数")
+                Text("Input Parameters")
                     .font(.headline)
-                
+
                 Spacer()
-                
-                // 键盘关闭按钮
+
+                // Keyboard dismiss button
                 if isInputFocused {
                     Button(action: {
                         keyboardManager.dismissKeyboard()
@@ -120,28 +214,29 @@ struct ToolCallView: View {
             .animation(.easeInOut(duration: 0.2), value: isInputFocused)
             
             VStack(alignment: .leading, spacing: 8) {
-                TextField(selectedTool.placeholder, text: $inputText, axis: .vertical)
+                TextField("Ask me anything! e.g., 'What's the weather in Tokyo?' or 'Calculate 15 * 8'", text: $inputText, axis: .vertical)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
                     .lineLimit(3...6)
                     .focused($isInputFocused)
                 
-                Text(selectedTool.helpText)
+                Text("💡 You can use natural language! Try: 'What's the weather in Beijing?' or 'Calculate 25 * 4'")
                     .font(.caption)
-                    .foregroundColor(.secondary)
-                
-                // 快速选择数据
+                    .foregroundColor(.blue)
+                    .padding(.top, 4)
+
+                // Quick selection data
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("快速选择")
+                    Text("Quick Select")
                         .font(.subheadline)
                         .fontWeight(.medium)
                         .foregroundColor(.primary)
-                    
+
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
                             ForEach(quickSelectionData, id: \.self) { data in
                                 Button(data) {
                                     inputText = data
-                                    // 自动清除之前的结果
+                                    // Automatically clear previous results
                                     withAnimation(.easeInOut) {
                                         results.removeAll()
                                     }
@@ -175,8 +270,8 @@ struct ToolCallView: View {
                 } else {
                     Image(systemName: selectedTool.icon)
                 }
-                
-                Text(isProcessing ? "正在执行..." : "执行 \(selectedTool.displayName)")
+
+                Text(isProcessing ? "Processing..." : "Ask AI Assistant")
                     .font(.headline)
             }
             .foregroundColor(.white)
@@ -199,12 +294,12 @@ struct ToolCallView: View {
         VStack(alignment: .leading, spacing: 16) {
             if !results.isEmpty {
                 HStack {
-                    Text("执行结果")
+                    Text("Execution Results")
                         .font(.headline)
-                    
+
                     Spacer()
-                    
-                    Button("清除") {
+
+                    Button("Clear") {
                         withAnimation(.easeInOut) {
                             results.removeAll()
                         }
@@ -219,31 +314,32 @@ struct ToolCallView: View {
             }
         }
     }
-    
-    // MARK: - 功能方法
-    
+
+    // MARK: - Functionality Methods
+
     private func executeToolCall() {
         guard !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            alertMessage = "请输入有效的参数"
+            alertMessage = "Please enter valid parameters"
             showAlert = true
             return
         }
-        
-        // 点击执行按钮时自动关闭键盘
+
+        // Automatically dismiss keyboard when execute button is tapped
         keyboardManager.dismissKeyboard()
         isInputFocused = false
-        
-        // 清除上一次的执行结果
+
+        // Clear previous execution results
         withAnimation(.easeInOut) {
             results.removeAll()
         }
-        
+
         isProcessing = true
-        
+
         Task {
             do {
-                let result = try await performToolCall(tool: selectedTool, input: inputText)
-                
+                // Use natural language interaction with Apple Intelligence
+                let result = try await performNaturalLanguageToolCall(input: inputText)
+
                 await MainActor.run {
                     withAnimation(.easeInOut) {
                         results.insert(result, at: 0)
@@ -252,16 +348,65 @@ struct ToolCallView: View {
                 }
             } catch {
                 await MainActor.run {
-                    alertMessage = "执行失败: \(error.localizedDescription)"
+                    alertMessage = "Execution failed: \(error.localizedDescription)"
                     showAlert = true
                     isProcessing = false
                 }
             }
         }
     }
-    
+
+    // MARK: - Natural Language Tool Call using Apple Intelligence
+
+    private func performNaturalLanguageToolCall(input: String) async throws -> ToolCallResult {
+        // Create a session with tools following official demo pattern
+        let session = LanguageModelSession(
+            tools: [WeatherTool(), CalculatorTool()],
+            instructions: "Help the person with getting weather information and performing calculations"
+        )
+
+        // Make the request using natural language - exactly like official demo
+        let response = try await session.respond(to: input)
+
+        // Determine which tool category was likely used based on the input
+        let toolType = determineToolType(from: input)
+
+        return ToolCallResult(
+            tool: toolType,
+            input: input,
+            output: response.content,
+            success: true,
+            metadata: [
+                "method": "Apple Intelligence LanguageModelSession with Tools",
+                "naturalLanguage": "true"
+            ]
+        )
+    }
+
+    private func determineToolType(from input: String) -> ToolType {
+        let lowercaseInput = input.lowercased()
+
+        if lowercaseInput.contains("weather") || lowercaseInput.contains("temperature") || lowercaseInput.contains("forecast") {
+            return .weather
+        } else if lowercaseInput.contains("calculate") || lowercaseInput.contains("math") ||
+                  lowercaseInput.contains("+") || lowercaseInput.contains("-") ||
+                  lowercaseInput.contains("*") || lowercaseInput.contains("/") {
+            return .calculator
+        } else if lowercaseInput.contains("translate") || lowercaseInput.contains("translation") {
+            return .translator
+        } else if lowercaseInput.contains("search") || lowercaseInput.contains("find") || lowercaseInput.contains("lookup") {
+            return .search
+        } else if lowercaseInput.contains("qr") || lowercaseInput.contains("code") || lowercaseInput.contains("barcode") {
+            return .qrGenerator
+        } else if lowercaseInput.contains("color") || lowercaseInput.contains("palette") || lowercaseInput.contains("theme") {
+            return .colorPalette
+        } else {
+            return selectedTool // fallback to selected tool
+        }
+    }
+
     private func performToolCall(tool: ToolType, input: String) async throws -> ToolCallResult {
-        // 直接执行，无延迟
+        // Execute directly without delay
         switch tool {
         case .weather:
             return try await getWeatherInfo(for: input)
@@ -277,349 +422,171 @@ struct ToolCallView: View {
             return try await generateColorPalette(description: input)
         }
     }
-    
-    // MARK: - Tool Call 实现
+
+    // MARK: - Tool Call Implementation
     
     private func getWeatherInfo(for location: String) async throws -> ToolCallResult {
-        // 使用真实的天气API调用 (wttr.in)
-        guard let url = URL(string: "https://wttr.in/\(location.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? "")?format=j1") else {
-            throw ToolCallError.networkError
-        }
-        
-        do {
-            let (data, _) = try await URLSession.shared.data(from: url)
-            
-            if let jsonObject = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let currentCondition = jsonObject["current_condition"] as? [[String: Any]],
-               let current = currentCondition.first {
-                
-                let temperature = current["temp_C"] as? String ?? "未知"
-                let condition = (current["weatherDesc"] as? [[String: Any]])?.first?["value"] as? String ?? "未知"
-                let humidity = current["humidity"] as? String ?? "未知"
-                let windSpeed = current["windspeedKmph"] as? String ?? "未知"
-                let feelsLike = current["FeelsLikeC"] as? String ?? "未知"
-                let uvIndex = current["uvIndex"] as? String ?? "未知"
-                
-                let weatherData = """
-                📍 地点: \(location)
-                🌡️ 温度: \(temperature)°C (体感 \(feelsLike)°C)
-                ☁️ 天气: \(condition)
-                💧 湿度: \(humidity)%
-                💨 风速: \(windSpeed) km/h
-                ☀️ UV指数: \(uvIndex)
-                
-                今日建议: \(generateWeatherAdvice(temperature: Int(temperature) ?? 20, condition: condition))
-                📡 数据来源: wttr.in 真实天气API
-                """
-                
-                return ToolCallResult(
-                    tool: .weather,
-                    input: location,
-                    output: weatherData,
-                    success: true,
-                    metadata: [
-                        "temperature": temperature,
-                        "condition": condition,
-                        "humidity": humidity,
-                        "windSpeed": windSpeed
-                    ]
-                )
-            } else {
-                throw ToolCallError.serviceUnavailable
-            }
-        } catch {
-            throw ToolCallError.networkError
-        }
+        // Create a session with WeatherTool following official demo pattern
+        let session = LanguageModelSession(
+            tools: [WeatherTool()],
+            instructions: "Help the person with getting weather information"
+        )
+
+        // Make a request using natural language - exactly like official demo
+        let response = try await session.respond(to: "What's the weather like in \(location)?")
+
+        return ToolCallResult(
+            tool: .weather,
+            input: location,
+            output: response.content,
+            success: true,
+            metadata: [
+                "city": location,
+                "source": "Apple Intelligence WeatherTool"
+            ]
+        )
     }
     
     private func performCalculation(expression: String) async throws -> ToolCallResult {
-        // 使用真实的计算功能 (NSExpression)
-        let cleanExpression = expression.replacingOccurrences(of: " ", with: "")
-        let result = try evaluateExpression(cleanExpression)
-        
-        let calculationResult = """
-        📊 计算表达式: \(expression)
-        ✅ 计算结果: \(formatNumber(result))
-        
-        计算详情:
-        • 原始表达式: \(expression)
-        • 清理后表达式: \(cleanExpression)
-        • 数值结果: \(result)
-        • 格式化结果: \(formatNumber(result))
-        🔧 计算引擎: NSExpression (Apple Framework)
-        """
-        
+        // Create a session with CalculatorTool following official demo pattern
+        let session = LanguageModelSession(
+            tools: [CalculatorTool()],
+            instructions: "Help the person with performing mathematical calculations"
+        )
+
+        // Make a request using natural language - exactly like official demo
+        let response = try await session.respond(to: "Calculate: \(expression)")
+
         return ToolCallResult(
             tool: .calculator,
             input: expression,
-            output: calculationResult,
+            output: response.content,
             success: true,
-            metadata: ["result": "\(result)", "formatted": formatNumber(result)]
+            metadata: [
+                "expression": expression,
+                "source": "Apple Intelligence CalculatorTool"
+            ]
         )
     }
     
     private func translateText(_ text: String) async throws -> ToolCallResult {
-        // 使用真实的翻译API (Google Translate)
-        let sourceLanguage = detectLanguage(text)
-        let targetLanguage = sourceLanguage == "zh" ? "en" : "zh"
-        
-        guard let encodedText = text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let url = URL(string: "https://translate.googleapis.com/translate_a/single?client=gtx&sl=\(sourceLanguage)&tl=\(targetLanguage)&dt=t&q=\(encodedText)") else {
-            throw ToolCallError.networkError
-        }
-        
-        do {
-            let (data, _) = try await URLSession.shared.data(from: url)
-            
-            if let jsonArray = try? JSONSerialization.jsonObject(with: data) as? [Any],
-               let translations = jsonArray.first as? [Any],
-               let firstTranslation = translations.first as? [Any],
-               let translatedText = firstTranslation.first as? String {
-                
-                let translationResult = """
-                🌍 原文 (\(getLanguageName(sourceLanguage))): \(text)
-                ➡️ 译文 (\(getLanguageName(targetLanguage))): \(translatedText)
-                📝 语言对: \(getLanguageName(sourceLanguage)) → \(getLanguageName(targetLanguage))
-                🎯 翻译质量: 优秀
-                
-                🔧 翻译服务: Google Translate API (真实调用)
-                """
-                
-                return ToolCallResult(
-                    tool: .translator,
-                    input: text,
-                    output: translationResult,
-                    success: true,
-                    metadata: [
-                        "translated": translatedText,
-                        "sourceLanguage": sourceLanguage,
-                        "targetLanguage": targetLanguage
-                    ]
-                )
-            } else {
-                throw ToolCallError.serviceUnavailable
-            }
-        } catch {
-            throw ToolCallError.networkError
-        }
+        // Use Apple FoundationModels framework for translation
+        let session = LanguageModelSession(
+            instructions: "You are a translation assistant. Translate text between languages accurately."
+        )
+
+        let response = try await session.respond(to: "Translate this text: \(text)")
+
+        return ToolCallResult(
+            tool: .translator,
+            input: text,
+            output: response.content,
+            success: true,
+            metadata: [
+                "text": text,
+                "source": "Apple FoundationModels"
+            ]
+        )
     }
     
     private func performSearch(query: String) async throws -> ToolCallResult {
-        // 使用真实的搜索API (DuckDuckGo)
-        guard let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let url = URL(string: "https://api.duckduckgo.com/?q=\(encodedQuery)&format=json&no_html=1&skip_disambig=1") else {
-            throw ToolCallError.networkError
-        }
-        
-        do {
-            let (data, _) = try await URLSession.shared.data(from: url)
-            
-            if let jsonObject = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                let abstract = jsonObject["Abstract"] as? String ?? ""
-                let abstractSource = jsonObject["AbstractSource"] as? String ?? ""
-                let abstractURL = jsonObject["AbstractURL"] as? String ?? ""
-                let relatedTopics = jsonObject["RelatedTopics"] as? [[String: Any]] ?? []
-                
-                var searchResults = """
-                🔍 搜索关键词: \(query)
-                📊 搜索引擎: DuckDuckGo (真实API)
-                
-                """
-                
-                if !abstract.isEmpty {
-                    searchResults += """
-                📝 摘要信息:
-                \(abstract)
-                
-                📚 信息来源: \(abstractSource)
-                🔗 详细链接: \(abstractURL)
-                
-                """
-                }
-                
-                if !relatedTopics.isEmpty {
-                    searchResults += "🔗 相关主题:\n"
-                    for (index, topic) in relatedTopics.prefix(5).enumerated() {
-                        if let text = topic["Text"] as? String {
-                            searchResults += "\(index + 1). \(text)\n"
-                        }
-                    }
-                }
-                
-                if abstract.isEmpty && relatedTopics.isEmpty {
-                    searchResults += "未找到相关的即时答案，建议在浏览器中搜索获取更多结果。"
-                }
-                
-                return ToolCallResult(
-                    tool: .search,
-                    input: query,
-                    output: searchResults,
-                    success: true,
-                    metadata: [
-                        "abstract": abstract,
-                        "source": abstractSource,
-                        "relatedCount": "\(relatedTopics.count)"
-                    ]
-                )
-            } else {
-                throw ToolCallError.serviceUnavailable
-            }
-        } catch {
-            throw ToolCallError.networkError
-        }
+        // Use Apple FoundationModels framework for search
+        let session = LanguageModelSession(
+            instructions: "You are a search assistant. Provide helpful information and search results for user queries."
+        )
+
+        let response = try await session.respond(to: "Search for information about: \(query)")
+
+        return ToolCallResult(
+            tool: .search,
+            input: query,
+            output: response.content,
+            success: true,
+            metadata: [
+                "query": query,
+                "source": "Apple FoundationModels"
+            ]
+        )
     }
     
     private func generateQRCode(text: String) async throws -> ToolCallResult {
-        // 使用真实的二维码生成API (QR Server)
-        guard let encodedText = text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let url = URL(string: "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=\(encodedText)") else {
-            throw ToolCallError.networkError
-        }
-        
-        do {
-            let (data, response) = try await URLSession.shared.data(from: url)
-            
-            if let httpResponse = response as? HTTPURLResponse,
-               httpResponse.statusCode == 200 {
-                
-                let qrResult = """
-                📱 二维码内容: \(text)
-                📐 尺寸: 200x200 像素
-                🎨 格式: PNG
-                📊 数据大小: \(data.count) bytes
-                
-                二维码已成功生成 ✅
-                
-                🔧 API信息:
-                • 服务提供商: QR Server API (真实调用)
-                • 生成时间: \(DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium))
-                • 响应大小: \(data.count) bytes
-                • API地址: \(url.absoluteString)
-                
-                使用说明:
-                • 可用于分享文本、链接等
-                • 支持中英文及特殊字符
-                • 建议在明亮环境下扫描
-                """
-                
-                return ToolCallResult(
-                    tool: .qrGenerator,
-                    input: text,
-                    output: qrResult,
-                    success: true,
-                    metadata: [
-                        "size": "200x200",
-                        "format": "PNG",
-                        "dataSize": "\(data.count)",
-                        "apiUrl": url.absoluteString
-                    ]
-                )
-            } else {
-                throw ToolCallError.serviceUnavailable
-            }
-        } catch {
-            throw ToolCallError.networkError
-        }
+        // Use Apple FoundationModels framework for QR code generation
+        let session = LanguageModelSession(
+            instructions: "You are a QR code assistant. Help users generate QR codes and provide information about them."
+        )
+
+        let response = try await session.respond(to: "Generate a QR code for: \(text)")
+
+        return ToolCallResult(
+            tool: .qrGenerator,
+            input: text,
+            output: response.content,
+            success: true,
+            metadata: [
+                "text": text,
+                "source": "Apple FoundationModels"
+            ]
+        )
     }
     
     private func generateColorPalette(description: String) async throws -> ToolCallResult {
-        // 使用真实的颜色调色板生成API (Colormind API)
-        let prompt = ["N","N","N","N","N"]
-        let requestBody: [String: Any] = [
-            "model": "default",
-            "input": prompt
-        ]
-        
-        guard let url = URL(string: "http://colormind.io/api/"),
-              let httpBody = try? JSONSerialization.data(withJSONObject: requestBody) else {
-            throw ToolCallError.networkError
-        }
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = httpBody
-        
-        do {
-            let (data, _) = try await URLSession.shared.data(for: request)
-            
-            if let jsonObject = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let result = jsonObject["result"] as? [[Int]] {
-                
-                let colors = result.map { rgb in
-                    String(format: "#%02X%02X%02X", rgb[0], rgb[1], rgb[2])
-                }
-                
-                let paletteResult = """
-                🎨 主题: \(description)
-                🌈 AI生成调色板 (5色):
-                
-                \(colors.enumerated().map { index, color in
-                    "• 颜色 \(index + 1): \(color) RGB(\(result[index][0]), \(result[index][1]), \(result[index][2]))"
-                }.joined(separator: "\n"))
-                
-                设计建议:
-                • 主色调适合做背景色
-                • 辅助色可用于按钮和强调
-                • 建议搭配使用以保持和谐
-                • 颜色经过AI算法优化，确保视觉协调
-                
-                🔧 API信息: Colormind.io 机器学习调色板 (真实调用)
-                """
-                
-                return ToolCallResult(
-                    tool: .colorPalette,
-                    input: description,
-                    output: paletteResult,
-                    success: true,
-                    metadata: ["colors": colors.joined(separator: ",")]
-                )
-            } else {
-                throw ToolCallError.serviceUnavailable
-            }
-        } catch {
-            throw ToolCallError.networkError
-        }
+        // Use Apple FoundationModels framework for color palette generation
+        let session = LanguageModelSession(
+            instructions: "You are a color palette assistant. Generate beautiful color palettes based on themes and descriptions."
+        )
+
+        let response = try await session.respond(to: "Create a color palette for: \(description)")
+
+        return ToolCallResult(
+            tool: .colorPalette,
+            input: description,
+            output: response.content,
+            success: true,
+            metadata: [
+                "theme": description,
+                "source": "Apple FoundationModels"
+            ]
+        )
     }
-    
-    // MARK: - 辅助方法
-    
+
+    // MARK: - Helper Methods
+
     private func generateWeatherAdvice(temperature: Int, condition: String) -> String {
         switch temperature {
         case ..<10:
-            return "天气较冷，建议多穿衣物保暖"
+            return "Weather is cold, recommend wearing more clothes to keep warm"
         case 10..<20:
-            return "天气凉爽，适合户外活动"
+            return "Weather is cool, suitable for outdoor activities"
         case 20..<30:
-            return "天气宜人，是出行的好天气"
+            return "Weather is pleasant, great for traveling"
         default:
-            return "天气炎热，注意防晒和补水"
+            return "Weather is hot, pay attention to sun protection and hydration"
         }
     }
-    
+
     private func detectLanguage(_ text: String) -> String {
-        // 简单的语言检测逻辑
+        // Simple language detection logic
         let chinesePattern = try! NSRegularExpression(pattern: "[\\u4e00-\\u9fff]", options: [])
         let chineseMatches = chinesePattern.numberOfMatches(in: text, options: [], range: NSRange(location: 0, length: text.count))
-        
+
         return chineseMatches > 0 ? "zh" : "en"
     }
     
     private func getLanguageName(_ code: String) -> String {
         switch code {
-        case "zh": return "中文"
-        case "en": return "英文"
-        case "ja": return "日文"
-        case "ko": return "韩文"
-        case "fr": return "法文"
-        case "de": return "德文"
-        case "es": return "西班牙文"
+        case "zh": return "Chinese"
+        case "en": return "English"
+        case "ja": return "Japanese"
+        case "ko": return "Korean"
+        case "fr": return "French"
+        case "de": return "German"
+        case "es": return "Spanish"
         default: return code
         }
     }
-    
+
     private func formatNumber(_ number: Double) -> String {
-        // 格式化数字显示
+        // Format number display
         if number == floor(number) {
             return String(Int(number))
         } else {
@@ -628,19 +595,19 @@ struct ToolCallView: View {
     }
     
     private func evaluateExpression(_ expression: String) throws -> Double {
-        // 简单的数学表达式求值（仅支持基本运算）
-        // 清理表达式，移除无效字符
+        // Simple mathematical expression evaluation (supports basic operations only)
+        // Clean expression, remove invalid characters
         let cleanExpression = expression
             .replacingOccurrences(of: "==", with: "")
             .replacingOccurrences(of: "=", with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        // 检查是否为空或无效
+
+        // Check if empty or invalid
         guard !cleanExpression.isEmpty else {
             throw ToolCallError.invalidExpression
         }
-        
-        // 检查是否只包含数字和基本运算符
+
+        // Check if contains only numbers and basic operators
         let validCharacters = CharacterSet(charactersIn: "0123456789+-*/.() ")
         guard cleanExpression.unicodeScalars.allSatisfy({ validCharacters.contains($0) }) else {
             throw ToolCallError.invalidExpression
@@ -659,7 +626,7 @@ struct ToolCallView: View {
     }
 }
 
-// MARK: - 数据模型
+// MARK: - Data Models
 
 enum ToolType: CaseIterable {
     case weather
@@ -668,26 +635,26 @@ enum ToolType: CaseIterable {
     case search
     case qrGenerator
     case colorPalette
-    
+
     var displayName: String {
         switch self {
-        case .weather: return "天气查询"
-        case .calculator: return "计算器"
-        case .translator: return "翻译工具"
-        case .search: return "搜索引擎"
-        case .qrGenerator: return "二维码生成"
-        case .colorPalette: return "调色板"
+        case .weather: return "Weather"
+        case .calculator: return "Calculator"
+        case .translator: return "Translator"
+        case .search: return "Search"
+        case .qrGenerator: return "QR Generator"
+        case .colorPalette: return "Color Palette"
         }
     }
-    
+
     var description: String {
         switch self {
-        case .weather: return "获取指定地点的天气信息"
-        case .calculator: return "执行数学计算"
-        case .translator: return "文本翻译服务"
-        case .search: return "互联网搜索"
-        case .qrGenerator: return "生成二维码"
-        case .colorPalette: return "生成主题色彩"
+        case .weather: return "Get weather information for a specified location"
+        case .calculator: return "Perform mathematical calculations"
+        case .translator: return "Text translation service"
+        case .search: return "Internet search"
+        case .qrGenerator: return "Generate QR codes"
+        case .colorPalette: return "Generate theme colors"
         }
     }
     
@@ -712,26 +679,26 @@ enum ToolType: CaseIterable {
         case .colorPalette: return .pink
         }
     }
-    
+
     var placeholder: String {
         switch self {
-        case .weather: return "输入城市名称，如：北京"
-        case .calculator: return "输入数学表达式，如：2+3*4"
-        case .translator: return "输入要翻译的文本"
-        case .search: return "输入搜索关键词"
-        case .qrGenerator: return "输入要生成二维码的文本"
-        case .colorPalette: return "描述颜色主题，如：春天"
+        case .weather: return "Enter city name, e.g.: Boston"
+        case .calculator: return "Enter math expression, e.g.: 2+3*4"
+        case .translator: return "Enter text to translate"
+        case .search: return "Enter search keywords"
+        case .qrGenerator: return "Enter text to generate QR code"
+        case .colorPalette: return "Describe color theme, e.g.: Spring"
         }
     }
-    
+
     var helpText: String {
         switch self {
-        case .weather: return "支持国内外主要城市天气查询"
-        case .calculator: return "支持基本运算符：+、-、*、/"
-        case .translator: return "支持中英文互译"
-        case .search: return "模拟互联网搜索结果"
-        case .qrGenerator: return "支持文本、链接等内容"
-        case .colorPalette: return "根据描述生成配色方案"
+        case .weather: return "Supports major cities worldwide weather queries"
+        case .calculator: return "Supports basic operators: +, -, *, /"
+        case .translator: return "Supports Chinese-English translation"
+        case .search: return "Simulates internet search results"
+        case .qrGenerator: return "Supports text, links and other content"
+        case .colorPalette: return "Generate color schemes based on description"
         }
     }
 }
@@ -759,20 +726,20 @@ enum ToolCallError: Error, LocalizedError {
     case invalidExpression
     case networkError
     case serviceUnavailable
-    
+
     var errorDescription: String? {
         switch self {
         case .invalidExpression:
-            return "无效的表达式"
+            return "Invalid expression"
         case .networkError:
-            return "网络连接错误"
+            return "Network connection error"
         case .serviceUnavailable:
-            return "服务暂不可用"
+            return "Service temporarily unavailable"
         }
     }
 }
 
-// MARK: - 子视图组件
+// MARK: - Sub View Components
 
 struct ToolSelectorCard: View {
     let tool: ToolType
@@ -813,7 +780,7 @@ struct ToolCallResultCard: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // 头部信息
+            // Header information
             HStack {
                 Image(systemName: result.tool.icon)
                     .foregroundColor(result.tool.color)
@@ -833,13 +800,13 @@ struct ToolCallResultCard: View {
                 Image(systemName: result.success ? "checkmark.circle.fill" : "xmark.circle.fill")
                     .foregroundColor(result.success ? .green : .red)
             }
-            
-            // 输入参数
+
+            // Input parameters
             VStack(alignment: .leading, spacing: 4) {
-                Text("输入:")
+                Text("Input:")
                     .font(.caption)
                     .foregroundColor(.secondary)
-                
+
                 Text(result.input)
                     .font(.body)
                     .padding(.horizontal, 12)
@@ -847,13 +814,13 @@ struct ToolCallResultCard: View {
                     .background(Color(.systemGray6))
                     .cornerRadius(8)
             }
-            
-            // 输出结果
+
+            // Output results
             VStack(alignment: .leading, spacing: 4) {
-                Text("结果:")
+                Text("Result:")
                     .font(.caption)
                     .foregroundColor(.secondary)
-                
+
                 Text(result.output)
                     .font(.body)
                     .padding(.horizontal, 12)

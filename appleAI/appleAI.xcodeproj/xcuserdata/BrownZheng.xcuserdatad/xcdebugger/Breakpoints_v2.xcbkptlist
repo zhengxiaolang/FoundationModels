@@ -82,5 +82,51 @@
             landmarkType = "3">
          </BreakpointContent>
       </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "545F7936-4E00-48F5-B673-738AD5075AE8"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "appleAI/Views/ToolCall/ToolCallView.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "13"
+            endingLineNumber = "13"
+            landmarkName = "WeatherTool"
+            landmarkType = "14">
+            <Locations>
+               <Location
+                  uuid = "545F7936-4E00-48F5-B673-738AD5075AE8 - 50ad6117dfe222ff"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "appleAI.ToolCallView.init() -&gt; appleAI.ToolCallView"
+                  moduleName = "appleAI.debug.dylib"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/BrownZheng/Documents/GitHub/FoundationModels/appleAI/appleAI/Views/ToolCall/ToolCallView.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "0"
+                  endingLineNumber = "0">
+               </Location>
+               <Location
+                  uuid = "545F7936-4E00-48F5-B673-738AD5075AE8 - dfa79233f3fdf4db"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "appleAI.ToolCallView.init(assistant: SwiftUI.EnvironmentObject&lt;appleAI.AIAssistant&gt;) -&gt; appleAI.ToolCallView"
+                  moduleName = "appleAI.debug.dylib"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/BrownZheng/Documents/GitHub/FoundationModels/appleAI/appleAI/Views/ToolCall/ToolCallView.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "17"
+                  endingLineNumber = "17">
+               </Location>
+            </Locations>
+         </BreakpointContent>
+      </BreakpointProxy>
    </Breakpoints>
 </Bucket>
