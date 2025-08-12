@@ -24,44 +24,103 @@ class QRCodeGenerator {
         correctionLevel: QRCorrectionLevel = .medium
     ) -> UIImage? {
 
+        guard !text.isEmpty else { return nil }
+
+        // 直接使用最简单的方法
+        return generateBasicQRCode(from: text)
+    }
+
+    /// 简化的二维码生成方法，用于测试
+    static func generateSimpleQRCode(from text: String) -> UIImage? {
         guard !text.isEmpty else {
-            print("QRCodeGenerator: Empty text provided")
+            print("QRCodeGenerator Simple: Empty text")
             return nil
         }
 
-        print("QRCodeGenerator: Generating QR code for text: \(text)")
+        print("QRCodeGenerator Simple: Generating QR for: \(text)")
+
+        let data = text.data(using: .utf8)
+
+        if let filter = CIFilter(name: "CIQRCodeGenerator") {
+            filter.setValue(data, forKey: "inputMessage")
+            filter.setValue("M", forKey: "inputCorrectionLevel")
+
+            if let outputImage = filter.outputImage {
+                print("QRCodeGenerator Simple: Output image extent: \(outputImage.extent)")
+
+                let context = CIContext()
+
+                // 使用更安全的缩放方式
+                let originalSize = outputImage.extent.size
+                guard originalSize.width > 0 && originalSize.height > 0 else {
+                    print("QRCodeGenerator Simple: Invalid original size")
+                    return nil
+                }
+
+                // 固定缩放到200x200
+                let targetSize: CGFloat = 200
+                let scaleX = targetSize / originalSize.width
+                let scaleY = targetSize / originalSize.height
+                let scale = min(scaleX, scaleY)
+
+                print("QRCodeGenerator Simple: Scale: \(scale)")
+
+                let transform = CGAffineTransform(scaleX: scale, y: scale)
+                let scaledImage = outputImage.transformed(by: transform)
+
+                print("QRCodeGenerator Simple: Scaled image extent: \(scaledImage.extent)")
+
+                if let cgImage = context.createCGImage(scaledImage, from: scaledImage.extent) {
+                    print("QRCodeGenerator Simple: Successfully created CGImage")
+                    return UIImage(cgImage: cgImage)
+                } else {
+                    print("QRCodeGenerator Simple: Failed to create CGImage")
+                }
+            } else {
+                print("QRCodeGenerator Simple: Failed to get output image")
+            }
+        } else {
+            print("QRCodeGenerator Simple: Failed to create filter")
+        }
+
+        return nil
+    }
+
+    /// 最简单的二维码生成方法 - 使用苹果官方API
+    static func generateBasicQRCode(from text: String) -> UIImage? {
+        guard !text.isEmpty else {
+            print("QRCodeGenerator: Text is empty")
+            return nil
+        }
+
+        print("QRCodeGenerator: Generating QR for: \(text)")
+
+        let data = Data(text.utf8)
+
+        guard let filter = CIFilter(name: "CIQRCodeGenerator") else {
+            print("QRCodeGenerator: Failed to create filter")
+            return nil
+        }
+
+        filter.setValue(data, forKey: "inputMessage")
+        filter.setValue("M", forKey: "inputCorrectionLevel")
+
+        guard let qrCodeImage = filter.outputImage else {
+            print("QRCodeGenerator: Failed to get output image")
+            return nil
+        }
 
         let context = CIContext()
-        let filter = CIFilter.qrCodeGenerator()
+        let transform = CGAffineTransform(scaleX: 10, y: 10)
+        let output = qrCodeImage.transformed(by: transform)
 
-        // 设置输入数据
-        filter.message = Data(text.utf8)
-
-        // 设置错误纠正级别
-        filter.correctionLevel = correctionLevel.rawValue
-
-        // 获取生成的二维码图片
-        guard let outputImage = filter.outputImage else {
-            print("QRCodeGenerator: Failed to generate output image")
-            return nil
-        }
-
-        // 计算缩放比例
-        let scaleX = size.width / outputImage.extent.width
-        let scaleY = size.height / outputImage.extent.height
-        let scale = min(scaleX, scaleY)
-
-        // 缩放图片
-        let scaledImage = outputImage.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
-
-        // 转换为UIImage
-        guard let cgImage = context.createCGImage(scaledImage, from: scaledImage.extent) else {
+        guard let cgimg = context.createCGImage(output, from: output.extent) else {
             print("QRCodeGenerator: Failed to create CGImage")
             return nil
         }
 
-        let uiImage = UIImage(cgImage: cgImage)
-        print("QRCodeGenerator: Successfully generated QR code image")
+        let uiImage = UIImage(cgImage: cgimg)
+        print("QRCodeGenerator: Successfully generated QR code")
         return uiImage
     }
     
@@ -239,8 +298,23 @@ struct QRCodeView: View {
 
 #Preview {
     VStack(spacing: 20) {
-        QRCodeView(text: "Hello, World!")
-        QRCodeView(text: "https://apple.com", size: CGSize(width: 150, height: 150))
+        // 测试基础二维码生成
+        if let qrImage = QRCodeGenerator.generateBasicQRCode(from: "Hello, World!") {
+            Image(uiImage: qrImage)
+                .interpolation(.none)
+                .frame(width: 150, height: 150)
+        } else {
+            Text("QR Code generation failed")
+        }
+
+        // 测试URL
+        if let qrImage = QRCodeGenerator.generateBasicQRCode(from: "https://apple.com") {
+            Image(uiImage: qrImage)
+                .interpolation(.none)
+                .frame(width: 150, height: 150)
+        } else {
+            Text("URL QR Code generation failed")
+        }
     }
     .padding()
 }

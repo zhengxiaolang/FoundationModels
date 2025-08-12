@@ -255,11 +255,7 @@ struct QRGeneratorTool: Tool {
         }
 
         // 使用本地生成二维码
-        let qrImage = QRCodeGenerator.generateQRCode(
-            from: arguments.text,
-            size: CGSize(width: 200, height: 200),
-            correctionLevel: .medium
-        )
+        let qrImage = QRCodeGenerator.generateBasicQRCode(from: arguments.text)
 
         if qrImage != nil {
             let qrResult = """
@@ -572,7 +568,7 @@ struct ToolCallView: View {
                         .font(.title3)
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("当前工具: \(currentTool.displayName)")
+                        Text("Current tool: \(currentTool.displayName)")
                             .font(.subheadline)
                             .fontWeight(.medium)
 
@@ -1208,7 +1204,7 @@ enum ToolType: CaseIterable {
     var icon: String {
         switch self {
         case .weather: return "cloud.sun"
-        case .calculator: return "calculator"
+        case .calculator: return "plus.forwardslash.minus"
         case .translator: return "globe"
         case .search: return "magnifyingglass"
         case .qrGenerator: return "qrcode"
@@ -1367,14 +1363,12 @@ struct ToolCallResultCard: View {
 
                     HStack {
                         Spacer()
-                        QRCodeView(text: result.input, size: CGSize(width: 150, height: 150))
-                            .onAppear {
-                                // 生成用于分享的图片
-                                qrImage = QRCodeGenerator.generateQRCode(
-                                    from: result.input,
-                                    size: CGSize(width: 300, height: 300)
-                                )
-                            }
+
+                        // 直接内联生成二维码
+                        QRCodeDisplayView(text: result.input) { image in
+                            self.qrImage = image
+                        }
+
                         Spacer()
                     }
                     .padding(.vertical, 8)
@@ -1404,6 +1398,59 @@ struct ToolCallResultCard: View {
                 ShareSheet(activityItems: [image, result.input])
             }
         }
+    }
+}
+
+// MARK: - QR Code Display View
+
+struct QRCodeDisplayView: View {
+    let text: String
+    let onImageGenerated: (UIImage?) -> Void
+
+    var body: some View {
+        // 直接同步生成二维码
+        if let qrImage = generateQRCodeSync() {
+            Image(uiImage: qrImage)
+                .interpolation(.none)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 150, height: 150)
+                .background(Color.white)
+                .cornerRadius(8)
+                .onAppear {
+                    onImageGenerated(qrImage)
+                }
+        } else {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.red.opacity(0.3))
+                .frame(width: 150, height: 150)
+                .overlay(
+                    Text("QR Code Failed")
+                        .foregroundColor(.white)
+                        .font(.caption)
+                        .fontWeight(.bold)
+                )
+        }
+    }
+
+    private func generateQRCodeSync() -> UIImage? {
+        guard !text.isEmpty else { return nil }
+
+        let data = Data(text.utf8)
+
+        guard let filter = CIFilter(name: "CIQRCodeGenerator") else { return nil }
+        filter.setValue(data, forKey: "inputMessage")
+        filter.setValue("M", forKey: "inputCorrectionLevel")
+
+        guard let qrCodeImage = filter.outputImage else { return nil }
+
+        let context = CIContext()
+        let transform = CGAffineTransform(scaleX: 10, y: 10)
+        let output = qrCodeImage.transformed(by: transform)
+
+        guard let cgimg = context.createCGImage(output, from: output.extent) else { return nil }
+
+        return UIImage(cgImage: cgimg)
     }
 }
 
