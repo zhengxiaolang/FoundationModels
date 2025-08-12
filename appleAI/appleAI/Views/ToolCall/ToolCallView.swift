@@ -90,18 +90,98 @@ struct CalculatorTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> String {
-        // Simple calculation using NSExpression
-        let cleanExpression = arguments.expression.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Enhanced calculation with better expression parsing
+        let cleanExpression = preprocessExpression(arguments.expression)
 
         do {
-            let nsExpression = NSExpression(format: cleanExpression)
-            if let result = nsExpression.expressionValue(with: nil, context: nil) as? NSNumber {
-                return "The result of '\(cleanExpression)' is \(result.doubleValue)"
-            } else {
-                throw CalculationError.invalidExpression
+            // Try NSExpression first for simple math
+            if let result = try? evaluateWithNSExpression(cleanExpression) {
+                return "🧮 Calculation Result:\n\nExpression: \(arguments.expression)\nSimplified: \(cleanExpression)\nResult: \(formatNumber(result))\n\n✅ Calculated using NSExpression engine"
             }
+
+            // Fallback to custom parser for complex expressions
+            if let result = try? evaluateComplexExpression(cleanExpression) {
+                return "🧮 Calculation Result:\n\nExpression: \(arguments.expression)\nResult: \(formatNumber(result))\n\n✅ Calculated using custom parser"
+            }
+
+            throw CalculationError.invalidExpression
         } catch {
             throw CalculationError.evaluationFailed
+        }
+    }
+
+    private func preprocessExpression(_ expression: String) -> String {
+        var cleaned = expression.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Handle percentage calculations
+        cleaned = cleaned.replacingOccurrences(of: "% of ", with: " * 0.01 * ")
+        cleaned = cleaned.replacingOccurrences(of: "%", with: " * 0.01")
+
+        // Handle comparison operators (convert to calculation)
+        if cleaned.contains("==") || cleaned.contains("=") {
+            // For expressions like "15% of 200 == 1", just calculate the left side
+            if let equalIndex = cleaned.firstIndex(of: "=") {
+                cleaned = String(cleaned[..<equalIndex]).trimmingCharacters(in: .whitespaces)
+            }
+        }
+
+        // Replace common words with operators
+        cleaned = cleaned.replacingOccurrences(of: " plus ", with: " + ")
+        cleaned = cleaned.replacingOccurrences(of: " minus ", with: " - ")
+        cleaned = cleaned.replacingOccurrences(of: " times ", with: " * ")
+        cleaned = cleaned.replacingOccurrences(of: " divided by ", with: " / ")
+        cleaned = cleaned.replacingOccurrences(of: " x ", with: " * ")
+
+        return cleaned
+    }
+
+    private func evaluateWithNSExpression(_ expression: String) throws -> Double {
+        let nsExpression = NSExpression(format: expression)
+        if let result = nsExpression.expressionValue(with: nil, context: nil) as? NSNumber {
+            return result.doubleValue
+        }
+        throw CalculationError.invalidExpression
+    }
+
+    private func evaluateComplexExpression(_ expression: String) throws -> Double {
+        // Simple custom evaluator for basic operations
+        let components = expression.components(separatedBy: CharacterSet(charactersIn: "+-*/"))
+        let operators = expression.filter { "+-*/".contains($0) }
+
+        guard components.count > 1, operators.count == components.count - 1 else {
+            if let number = Double(expression) {
+                return number
+            }
+            throw CalculationError.invalidExpression
+        }
+
+        var result = Double(components[0].trimmingCharacters(in: .whitespaces)) ?? 0
+
+        for (index, op) in operators.enumerated() {
+            let nextValue = Double(components[index + 1].trimmingCharacters(in: .whitespaces)) ?? 0
+
+            switch op {
+            case "+": result += nextValue
+            case "-": result -= nextValue
+            case "*": result *= nextValue
+            case "/":
+                if nextValue != 0 {
+                    result /= nextValue
+                } else {
+                    throw CalculationError.invalidExpression
+                }
+            default: break
+            }
+        }
+
+        return result
+    }
+
+    private func formatNumber(_ number: Double) -> String {
+        if number.truncatingRemainder(dividingBy: 1) == 0 {
+            return String(format: "%.0f", number)
+        } else {
+            return String(format: "%.6f", number).trimmingCharacters(in: CharacterSet(charactersIn: "0")).trimmingCharacters(in: CharacterSet(charactersIn: "."))
         }
     }
 }
@@ -245,9 +325,9 @@ struct QRGeneratorTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> String {
-        // Use real QR code generation API (qr-server.com)
+        // Use real QR code generation API (qr-server.com) - Note: uses HTTP not HTTPS
         guard let encodedText = arguments.text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let url = URL(string: "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=\(encodedText)") else {
+              let url = URL(string: "http://api.qrserver.com/v1/create-qr-code/?size=200x200&data=\(encodedText)") else {
             throw ToolCallError.networkError
         }
 
@@ -293,7 +373,7 @@ struct ColorPaletteTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> String {
-        // Use real color palette API (colormind.io)
+        // Use real color palette API (colormind.io) - Note: uses HTTP not HTTPS
         let url = URL(string: "http://colormind.io/api/")!
 
         // Create request body for color generation
@@ -410,21 +490,24 @@ struct ToolCallView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
-                // Tool selector
-                toolSelector
+                // Smart input section (no tool selection needed)
+                smartInputSection
 
-                // Input section
-                inputSection
+                // Quick examples
+                quickExamplesSection
 
                 // Action button
-                actionButton
+                smartActionButton
 
                 // Results section
                 resultsSection
+
+                // Optional: Tool selector (collapsed by default)
+                manualToolSelector
             }
             .padding()
         }
-        .navigationTitle("Tool Call Demo")
+        .navigationTitle("Smart Tool Call")
         .navigationBarTitleDisplayMode(.large)
         .alert("Alert", isPresented: $showAlert) {
             Button("OK") { }
@@ -434,6 +517,206 @@ struct ToolCallView: View {
     }
     
     // MARK: - View Components
+
+    private var smartInputSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Ask me anything!")
+                    .font(.headline)
+                    .foregroundColor(.primary)
+
+                Text("I'll automatically choose the right tool for your request")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            VStack(spacing: 12) {
+                TextField("Enter your request...", text: $inputText, axis: .vertical)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .lineLimit(3...6)
+                    .focused($isInputFocused)
+                    .toolbar {
+                        ToolbarItemGroup(placement: .keyboard) {
+                            HStack {
+                                // Quick insert buttons
+                                Button("🌤️") {
+                                    insertQuickText("What's the weather in ")
+                                }
+
+                                Button("🧮") {
+                                    insertQuickText("Calculate ")
+                                }
+
+                                Button("🌍") {
+                                    insertQuickText("Translate ")
+                                }
+
+                                Button("🔍") {
+                                    insertQuickText("Search for ")
+                                }
+
+                                Spacer()
+
+                                // Close keyboard button
+                                Button("Done") {
+                                    isInputFocused = false
+                                }
+                                .fontWeight(.semibold)
+                            }
+                        }
+                    }
+
+                // Smart suggestions based on input
+                if !inputText.isEmpty {
+                    smartSuggestions
+                }
+            }
+        }
+        .padding()
+        .background(Color(.systemGray6))
+        .cornerRadius(16)
+    }
+
+    private var smartSuggestions: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("💡 Detected capabilities:")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            LazyVGrid(columns: [
+                GridItem(.flexible()),
+                GridItem(.flexible())
+            ], spacing: 8) {
+                ForEach(detectPossibleTools(from: inputText), id: \.self) { tool in
+                    HStack(spacing: 6) {
+                        Image(systemName: tool.icon)
+                            .font(.caption)
+                            .foregroundColor(tool.color)
+
+                        Text(tool.displayName)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(tool.color.opacity(0.1))
+                    .cornerRadius(8)
+                }
+            }
+        }
+        .padding(.top, 8)
+    }
+
+    private var quickExamplesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Quick Examples")
+                .font(.headline)
+                .foregroundColor(.primary)
+
+            LazyVGrid(columns: [
+                GridItem(.flexible())
+            ], spacing: 8) {
+                ForEach(quickSelectionData, id: \.self) { example in
+                    Button(action: {
+                        inputText = example
+                        isInputFocused = true
+                    }) {
+                        HStack {
+                            Text(example)
+                                .font(.caption)
+                                .foregroundColor(.primary)
+                                .multilineTextAlignment(.leading)
+
+                            Spacer()
+
+                            Image(systemName: "arrow.up.circle.fill")
+                                .font(.caption)
+                                .foregroundColor(.blue)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color(.systemBackground))
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.blue.opacity(0.2), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+            }
+        }
+        .padding()
+        .background(Color(.systemGray6))
+        .cornerRadius(16)
+    }
+
+    private var smartActionButton: some View {
+        Button(action: {
+            Task {
+                await performSmartToolCall()
+            }
+        }) {
+            HStack {
+                if isProcessing {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        .scaleEffect(0.8)
+                } else {
+                    Image(systemName: "sparkles")
+                        .font(.headline)
+                }
+
+                Text(isProcessing ? "AI is thinking..." : "✨ Smart Execute")
+                    .font(.headline)
+                    .fontWeight(.semibold)
+            }
+            .foregroundColor(.white)
+            .frame(maxWidth: .infinity)
+            .padding()
+            .background(
+                LinearGradient(
+                    gradient: Gradient(colors: [.blue, .purple]),
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .cornerRadius(12)
+            .disabled(inputText.isEmpty || isProcessing)
+        }
+    }
+
+    @State private var showManualSelector = false
+
+    private var manualToolSelector: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Button(action: {
+                withAnimation {
+                    showManualSelector.toggle()
+                }
+            }) {
+                HStack {
+                    Text("Manual Tool Selection")
+                        .font(.headline)
+                        .foregroundColor(.primary)
+
+                    Spacer()
+
+                    Image(systemName: showManualSelector ? "chevron.up" : "chevron.down")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .buttonStyle(PlainButtonStyle())
+
+            if showManualSelector {
+                toolSelector
+            }
+        }
+        .padding()
+        .background(Color(.systemGray6))
+        .cornerRadius(16)
+    }
 
     private var toolSelector: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -679,6 +962,90 @@ struct ToolCallView: View {
             return .colorPalette
         } else {
             return selectedTool // fallback to selected tool
+        }
+    }
+
+    // MARK: - Smart Tool Detection
+
+    private func detectPossibleTools(from input: String) -> [ToolType] {
+        let lowercaseInput = input.lowercased()
+        var possibleTools: [ToolType] = []
+
+        // Weather detection
+        if lowercaseInput.contains("weather") || lowercaseInput.contains("天气") ||
+           lowercaseInput.contains("temperature") || lowercaseInput.contains("温度") ||
+           lowercaseInput.contains("forecast") || lowercaseInput.contains("预报") {
+            possibleTools.append(.weather)
+        }
+
+        // Calculator detection
+        if lowercaseInput.range(of: "[0-9+\\-*/=().]", options: .regularExpression) != nil ||
+           lowercaseInput.contains("calculate") || lowercaseInput.contains("计算") ||
+           lowercaseInput.contains("math") || lowercaseInput.contains("数学") {
+            possibleTools.append(.calculator)
+        }
+
+        // Translation detection
+        if lowercaseInput.contains("translate") || lowercaseInput.contains("翻译") ||
+           lowercaseInput.contains("translation") || lowercaseInput.contains("中文") ||
+           lowercaseInput.contains("english") || lowercaseInput.contains("chinese") {
+            possibleTools.append(.translator)
+        }
+
+        // Search detection
+        if lowercaseInput.contains("search") || lowercaseInput.contains("搜索") ||
+           lowercaseInput.contains("find") || lowercaseInput.contains("查找") ||
+           lowercaseInput.contains("what is") || lowercaseInput.contains("什么是") {
+            possibleTools.append(.search)
+        }
+
+        // QR detection
+        if lowercaseInput.contains("qr") || lowercaseInput.contains("二维码") ||
+           lowercaseInput.contains("qr code") || lowercaseInput.contains("generate") {
+            possibleTools.append(.qrGenerator)
+        }
+
+        // Color detection
+        if lowercaseInput.contains("color") || lowercaseInput.contains("颜色") ||
+           lowercaseInput.contains("palette") || lowercaseInput.contains("调色板") ||
+           lowercaseInput.contains("theme") || lowercaseInput.contains("主题") {
+            possibleTools.append(.colorPalette)
+        }
+
+        return possibleTools
+    }
+
+    // MARK: - Helper Methods
+
+    private func insertQuickText(_ text: String) {
+        inputText += text
+        // Keep focus on the text field
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            isInputFocused = true
+        }
+    }
+
+    private func performSmartToolCall() async {
+        guard !inputText.isEmpty else { return }
+
+        isProcessing = true
+
+        do {
+            // Use Apple Intelligence to automatically select and call the appropriate tool
+            let result = try await performNaturalLanguageToolCall(input: inputText)
+
+            await MainActor.run {
+                results.insert(result, at: 0)
+                inputText = ""
+                isInputFocused = false
+                isProcessing = false
+            }
+        } catch {
+            await MainActor.run {
+                alertMessage = "Smart tool call failed: \(error.localizedDescription)"
+                showAlert = true
+                isProcessing = false
+            }
         }
     }
 
