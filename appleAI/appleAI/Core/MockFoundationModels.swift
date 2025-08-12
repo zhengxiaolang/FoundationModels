@@ -254,9 +254,9 @@ struct FoundationLanguageModel {
     }
     
     private func isQuestion(_ text: String) -> Bool {
-        return text.contains("?") || text.contains("？") || 
-               text.hasPrefix("什么") || text.hasPrefix("如何") || 
-               text.hasPrefix("为什么") || text.hasPrefix("how") || 
+        return text.contains("?") || text.contains("？") ||
+               text.hasPrefix("什么") || text.hasPrefix("如何") ||
+               text.hasPrefix("为什么") || text.hasPrefix("how") ||
                text.hasPrefix("what") || text.hasPrefix("why")
     }
     
@@ -735,6 +735,7 @@ enum FeatureDestination {
     case compilationTest
     case fixVerification
     case simpleFeatures
+    case toolCall
 }
 
 enum TaskType: String, CaseIterable {

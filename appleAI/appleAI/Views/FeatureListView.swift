@@ -40,9 +40,16 @@ struct FeatureListView: View {
             destinationType: .smartNotes
         ),
         FeatureItem(
+            title: "工具调用",
+            description: "AI 工具调用演示",
+            icon: "wrench.and.screwdriver.fill",
+            color: .pink,
+            destinationType: .toolCall
+        ),
+        FeatureItem(
             title: "调试工具",
             description: "性能监控、错误追踪、日志查看",
-            icon: "wrench.and.screwdriver",
+            icon: "gear",
             color: .red,
             destinationType: .debugTools
         )
@@ -101,6 +108,8 @@ struct FeatureListView: View {
                 FixVerificationView()
             case .simpleFeatures:
                 SimpleFeatureListView()
+            case .toolCall:
+                ToolCallView() // Add the destination view for 工具调用
             }
         }
         .environmentObject(assistant)

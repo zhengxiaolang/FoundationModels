@@ -84,6 +84,13 @@ struct HomeView: View {
             icon: "note.text",
             color: .mint,
             destinationType: .smartNotes
+        ),
+        FeatureItem(
+            title: "工具调用",
+            description: "AI 工具调用演示",
+            icon: "wrench.and.screwdriver",
+            color: .indigo,
+            destinationType: .toolCall
         )
     ]
 
@@ -238,6 +245,9 @@ struct HomeFeatureCard: View {
                 .environmentObject(assistant)
         case .smartNotes:
             SmartNotesView()
+                .environmentObject(assistant)
+        case .toolCall:
+            ToolCallView()
                 .environmentObject(assistant)
         default:
             Text("功能开发中...")
