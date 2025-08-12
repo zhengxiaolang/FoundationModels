@@ -394,7 +394,7 @@ struct ToolCallView: View {
     @State private var suggestedTool: ToolType? = nil // 建议的工具
     @State private var showSuggestion = true // 是否显示建议
     @FocusState private var isInputFocused: Bool
-    
+
     // Natural language examples for quick selection
     private var quickSelectionData: [String] {
         return [
@@ -408,7 +408,7 @@ struct ToolCallView: View {
             "What's 15% of 200?"
         ]
     }
-    
+
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
@@ -438,7 +438,7 @@ struct ToolCallView: View {
             analyzeInputAndSuggestTool(newValue)
         }
     }
-    
+
     // MARK: - View Components
 
     private var smartSuggestionView: some View {
@@ -499,7 +499,7 @@ struct ToolCallView: View {
             Text("Select Tool")
                 .font(.headline)
                 .foregroundColor(.primary)
-            
+
             LazyVGrid(columns: [
                 GridItem(.flexible()),
                 GridItem(.flexible())
@@ -513,7 +513,7 @@ struct ToolCallView: View {
                         withAnimation(.easeInOut) {
                             results.removeAll()
                         }
-                        
+
                         selectedTool = tool
                         inputText = tool.placeholder
                     }
@@ -524,7 +524,7 @@ struct ToolCallView: View {
         .background(Color(.systemGray6))
         .cornerRadius(16)
     }
-    
+
     private var inputSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -548,7 +548,7 @@ struct ToolCallView: View {
                 }
             }
             .animation(.easeInOut(duration: 0.2), value: isInputFocused)
-            
+
             VStack(alignment: .leading, spacing: 8) {
                 TextField("Ask me anything! e.g., 'What's the weather in Tokyo?' or 'Calculate 15 * 8'", text: $inputText, axis: .vertical)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
@@ -730,7 +730,7 @@ struct ToolCallView: View {
         .disabled(isProcessing || inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         .opacity(isProcessing || inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.6 : 1.0)
     }
-    
+
     private var resultsSection: some View {
         VStack(alignment: .leading, spacing: 16) {
             if !results.isEmpty {
@@ -749,7 +749,7 @@ struct ToolCallView: View {
                     .foregroundColor(.blue)
                 }
             }
-            
+
             ForEach(results) { result in
                 ToolCallResultCard(result: result)
             }
@@ -921,19 +921,37 @@ struct ToolCallView: View {
     private func determineToolType(from input: String) -> ToolType {
         let lowercaseInput = input.lowercased()
 
-        if lowercaseInput.contains("weather") || lowercaseInput.contains("temperature") || lowercaseInput.contains("forecast") {
+        // Weather
+        if lowercaseInput.contains("weather") || lowercaseInput.contains("temperature") || lowercaseInput.contains("forecast") ||
+            input.contains("天气") || input.contains("温度") || input.contains("预报") {
             return .weather
-        } else if lowercaseInput.contains("calculate") || lowercaseInput.contains("math") ||
-                  lowercaseInput.contains("+") || lowercaseInput.contains("-") ||
-                  lowercaseInput.contains("*") || lowercaseInput.contains("/") {
+        }
+        // Calculator
+        else if lowercaseInput.contains("calculate") || lowercaseInput.contains("math") ||
+                    lowercaseInput.contains("+") || lowercaseInput.contains("-") ||
+                    lowercaseInput.contains("*") || lowercaseInput.contains("/") ||
+                    input.contains("计算") || input.contains("等于") {
             return .calculator
-        } else if lowercaseInput.contains("translate") || lowercaseInput.contains("translation") {
+        }
+        // Translator
+        else if lowercaseInput.contains("translate") || lowercaseInput.contains("translation") ||
+                    input.contains("翻译") {
             return .translator
-        } else if lowercaseInput.contains("search") || lowercaseInput.contains("find") || lowercaseInput.contains("lookup") {
+        }
+        // Search
+        else if lowercaseInput.contains("search") || lowercaseInput.contains("find") || lowercaseInput.contains("lookup") ||
+                    input.contains("搜索") || input.contains("查找") {
             return .search
-        } else if lowercaseInput.contains("qr") || lowercaseInput.contains("code") || lowercaseInput.contains("barcode") {
+        }
+        // QR Code (expanded to include Chinese keywords and URL detection)
+        else if lowercaseInput.contains("qr") || lowercaseInput.contains("qrcode") || lowercaseInput.contains("qr code") ||
+                    lowercaseInput.contains("barcode") || input.contains("二维码") || input.contains("条码") || input.contains("扫码") || input.contains("生成二维码") ||
+                    containsURL(lowercaseInput) {
             return .qrGenerator
-        } else if lowercaseInput.contains("color") || lowercaseInput.contains("palette") || lowercaseInput.contains("theme") {
+        }
+        // Color Palette
+        else if lowercaseInput.contains("color") || lowercaseInput.contains("palette") || lowercaseInput.contains("theme") ||
+                    input.contains("颜色") || input.contains("调色板") || input.contains("主题") {
             return .colorPalette
         } else {
             return selectedTool // fallback to selected tool
@@ -959,7 +977,7 @@ struct ToolCallView: View {
     }
 
     // MARK: - Tool Call Implementation
-    
+
     private func getWeatherInfo(for location: String) async throws -> ToolCallResult {
         // Create a session with WeatherTool following official demo pattern
         let session = LanguageModelSession(
@@ -981,7 +999,7 @@ struct ToolCallView: View {
             ]
         )
     }
-    
+
     private func performCalculation(expression: String) async throws -> ToolCallResult {
         // Create a session with CalculatorTool following official demo pattern
         let session = LanguageModelSession(
@@ -1003,7 +1021,7 @@ struct ToolCallView: View {
             ]
         )
     }
-    
+
     private func translateText(_ text: String) async throws -> ToolCallResult {
         // Create a session with TranslatorTool following official demo pattern
         let session = LanguageModelSession(
@@ -1025,7 +1043,7 @@ struct ToolCallView: View {
             ]
         )
     }
-    
+
     private func performSearch(query: String) async throws -> ToolCallResult {
         // Create a session with SearchTool following official demo pattern
         let session = LanguageModelSession(
@@ -1047,7 +1065,7 @@ struct ToolCallView: View {
             ]
         )
     }
-    
+
     private func generateQRCode(text: String) async throws -> ToolCallResult {
         // Create a session with QRGeneratorTool following official demo pattern
         let session = LanguageModelSession(
@@ -1069,7 +1087,7 @@ struct ToolCallView: View {
             ]
         )
     }
-    
+
     private func generateColorPalette(description: String) async throws -> ToolCallResult {
         // Create a session with ColorPaletteTool following official demo pattern
         let session = LanguageModelSession(
@@ -1114,7 +1132,7 @@ struct ToolCallView: View {
 
         return chineseMatches > 0 ? "zh" : "en"
     }
-    
+
     private func getLanguageName(_ code: String) -> String {
         switch code {
         case "zh": return "Chinese"
@@ -1136,7 +1154,7 @@ struct ToolCallView: View {
             return String(format: "%.6g", number)
         }
     }
-    
+
     private func evaluateExpression(_ expression: String) throws -> Double {
         // Simple mathematical expression evaluation (supports basic operations only)
         // Clean expression, remove invalid characters
@@ -1155,7 +1173,7 @@ struct ToolCallView: View {
         guard cleanExpression.unicodeScalars.allSatisfy({ validCharacters.contains($0) }) else {
             throw ToolCallError.invalidExpression
         }
-        
+
         do {
             let nsExpression = NSExpression(format: cleanExpression)
             if let result = nsExpression.expressionValue(with: nil, context: nil) as? NSNumber {
@@ -1200,7 +1218,7 @@ enum ToolType: CaseIterable {
         case .colorPalette: return "Generate theme colors"
         }
     }
-    
+
     var icon: String {
         switch self {
         case .weather: return "cloud.sun"
@@ -1211,7 +1229,7 @@ enum ToolType: CaseIterable {
         case .colorPalette: return "paintbrush"
         }
     }
-    
+
     var color: Color {
         switch self {
         case .weather: return .blue
@@ -1254,7 +1272,7 @@ struct ToolCallResult: Identifiable {
     let success: Bool
     let timestamp: Date
     let metadata: [String: String]
-    
+
     init(tool: ToolType, input: String, output: String, success: Bool, metadata: [String: String] = [:]) {
         self.tool = tool
         self.input = input
@@ -1271,14 +1289,14 @@ struct ToolSelectorCard: View {
     let tool: ToolType
     let isSelected: Bool
     let onTap: () -> Void
-    
+
     var body: some View {
         Button(action: onTap) {
             VStack(spacing: 8) {
                 Image(systemName: tool.icon)
                     .font(.title2)
                     .foregroundColor(isSelected ? .white : tool.color)
-                
+
                 Text(tool.displayName)
                     .font(.caption)
                     .fontWeight(.medium)
@@ -1325,8 +1343,8 @@ struct ToolCallResultCard: View {
 
                 Spacer()
 
-                // QR码分享按钮
-                if result.tool == .qrGenerator && result.success {
+                // QR码分享按钮：与显示逻辑保持一致
+                if shouldShowQRCode(for: result) && result.success {
                     Button(action: {
                         showShareSheet = true
                     }) {
@@ -1354,8 +1372,8 @@ struct ToolCallResultCard: View {
                     .cornerRadius(8)
             }
 
-            // QR码显示（如果是二维码工具）
-            if result.tool == .qrGenerator && result.success {
+            // QR码显示：放宽条件，避免因类型误判而不显示
+            if shouldShowQRCode(for: result) {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Generated QR Code:")
                         .font(.caption)
@@ -1364,8 +1382,8 @@ struct ToolCallResultCard: View {
                     HStack {
                         Spacer()
 
-                        // 直接内联生成二维码
-                        QRCodeDisplayView(text: result.input) { image in
+                        // 直接内联生成二维码（使用提取后的payload）
+                        QRCodeDisplayView(text: extractQRPayload(from: result)) { image in
                             self.qrImage = image
                         }
 
@@ -1389,7 +1407,6 @@ struct ToolCallResultCard: View {
                     .cornerRadius(8)
             }
         }
-        .padding()
         .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
@@ -1399,7 +1416,46 @@ struct ToolCallResultCard: View {
             }
         }
     }
-}
+
+    // MARK: - QR 显示辅助
+    private func shouldShowQRCode(for result: ToolCallResult) -> Bool {
+        if !result.success { return false }
+        // 原始条件：是二维码工具
+        if result.tool == .qrGenerator { return true }
+        // 放宽：输入或输出包含明显的二维码或URL信号
+        let input = result.input
+        let output = result.output
+        return containsQRHint(in: input) || containsQRHint(in: output)
+    }
+
+    private func containsQRHint(in text: String) -> Bool {
+        let lower = text.lowercased()
+        return lower.contains("qr") || lower.contains("qrcode") || lower.contains("qr code") ||
+               text.contains("二维码") || text.contains("条码") || text.contains("扫码") ||
+               extractFirstURL(from: text) != nil
+    }
+
+    private func extractQRPayload(from result: ToolCallResult) -> String {
+        // 优先使用输入中的URL或纯文本；若无，再从输出中找URL；再兜底使用输入原文
+        if let url = extractFirstURL(from: result.input) { return url }
+        if let url = extractFirstURL(from: result.output) { return url }
+        // 清理输入中的描述性前缀（如 "Generate QR code for:")
+        let cleaned = result.input
+            .replacingOccurrences(of: "Generate QR code for:", with: "")
+            .replacingOccurrences(of: "for:", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty ? result.input : cleaned
+    }
+
+    private func extractFirstURL(from text: String) -> String? {
+        let pattern = #"https?://[^\s]+"#
+        if let range = text.range(of: pattern, options: .regularExpression) {
+            return String(text[range])
+        }
+        return nil
+    }
+    }
+
 
 // MARK: - QR Code Display View
 
