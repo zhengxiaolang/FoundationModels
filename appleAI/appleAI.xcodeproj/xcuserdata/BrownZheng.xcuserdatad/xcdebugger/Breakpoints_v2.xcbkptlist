@@ -96,34 +96,112 @@
             endingLineNumber = "13"
             landmarkName = "WeatherTool"
             landmarkType = "14">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "2BFD70C0-C726-4C0B-830E-C8705754281C"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "appleAI/Views/ToolCall/ToolCallView.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "120"
+            endingLineNumber = "120"
+            landmarkName = "call(arguments:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "8542C18C-6E34-4410-A9C6-7C8807A0D03C"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "appleAI/Views/ToolCall/ToolCallView.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "52"
+            endingLineNumber = "52"
+            landmarkName = "call(arguments:)"
+            landmarkType = "7">
             <Locations>
                <Location
-                  uuid = "545F7936-4E00-48F5-B673-738AD5075AE8 - 50ad6117dfe222ff"
+                  uuid = "8542C18C-6E34-4410-A9C6-7C8807A0D03C - e526e3efbf2b1f1f"
                   shouldBeEnabled = "Yes"
                   ignoreCount = "0"
                   continueAfterRunningActions = "No"
-                  symbolName = "appleAI.ToolCallView.init() -&gt; appleAI.ToolCallView"
+                  symbolName = "(1) suspend resume partial function for appleAI.CalculatorTool.call(arguments: appleAI.CalculatorTool.Arguments) async throws -&gt; Swift.String"
                   moduleName = "appleAI.debug.dylib"
                   usesParentBreakpointCondition = "Yes"
                   urlString = "file:///Users/BrownZheng/Documents/GitHub/FoundationModels/appleAI/appleAI/Views/ToolCall/ToolCallView.swift"
                   startingColumnNumber = "9223372036854775807"
                   endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "0"
-                  endingLineNumber = "0">
+                  startingLineNumber = "52"
+                  endingLineNumber = "52">
                </Location>
                <Location
-                  uuid = "545F7936-4E00-48F5-B673-738AD5075AE8 - dfa79233f3fdf4db"
+                  uuid = "8542C18C-6E34-4410-A9C6-7C8807A0D03C - 6b44c3c27a66a200"
                   shouldBeEnabled = "Yes"
                   ignoreCount = "0"
                   continueAfterRunningActions = "No"
-                  symbolName = "appleAI.ToolCallView.init(assistant: SwiftUI.EnvironmentObject&lt;appleAI.AIAssistant&gt;) -&gt; appleAI.ToolCallView"
+                  symbolName = "(3) suspend resume partial function for appleAI.WeatherTool.call(arguments: appleAI.WeatherTool.Arguments) async throws -&gt; Swift.String"
                   moduleName = "appleAI.debug.dylib"
                   usesParentBreakpointCondition = "Yes"
                   urlString = "file:///Users/BrownZheng/Documents/GitHub/FoundationModels/appleAI/appleAI/Views/ToolCall/ToolCallView.swift"
                   startingColumnNumber = "9223372036854775807"
                   endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "17"
-                  endingLineNumber = "17">
+                  startingLineNumber = "52"
+                  endingLineNumber = "52">
+               </Location>
+            </Locations>
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "FAA48FBD-5448-437D-B7BF-07A816C5A6EF"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "appleAI/Views/ToolCall/ToolCallView.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "56"
+            endingLineNumber = "56"
+            landmarkName = "call(arguments:)"
+            landmarkType = "7">
+            <Locations>
+               <Location
+                  uuid = "FAA48FBD-5448-437D-B7BF-07A816C5A6EF - e526e3efbf2b1e9b"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "(1) suspend resume partial function for appleAI.CalculatorTool.call(arguments: appleAI.CalculatorTool.Arguments) async throws -&gt; Swift.String"
+                  moduleName = "appleAI.debug.dylib"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/BrownZheng/Documents/GitHub/FoundationModels/appleAI/appleAI/Views/ToolCall/ToolCallView.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "56"
+                  endingLineNumber = "56">
+               </Location>
+               <Location
+                  uuid = "FAA48FBD-5448-437D-B7BF-07A816C5A6EF - 6b44c3c27a66a384"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "(3) suspend resume partial function for appleAI.WeatherTool.call(arguments: appleAI.WeatherTool.Arguments) async throws -&gt; Swift.String"
+                  moduleName = "appleAI.debug.dylib"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/BrownZheng/Documents/GitHub/FoundationModels/appleAI/appleAI/Views/ToolCall/ToolCallView.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "56"
+                  endingLineNumber = "56">
                </Location>
             </Locations>
          </BreakpointContent>
