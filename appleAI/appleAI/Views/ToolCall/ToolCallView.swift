@@ -230,53 +230,123 @@ struct SearchTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> String {
-        // Use real search API (DuckDuckGo Instant Answer API)
-        guard let encodedQuery = arguments.query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let url = URL(string: "https://api.duckduckgo.com/?q=\(encodedQuery)&format=json&no_html=1&skip_disambig=1") else {
-            throw ToolCallError.networkError
+        // Real APIs: Wikipedia REST, GitHub Search, HTTPBin echo
+        let query = arguments.query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { throw ToolCallError.invalidExpression }
+
+        async let wiki = fetchWikipediaSummary(for: query)
+        async let github = fetchGitHubRepositories(for: query)
+        async let httpbin = fetchHTTPBinEcho(for: query)
+
+        let (wikiRes, ghRes, echoRes) = await (wiki, github, httpbin)
+
+        var sections: [String] = []
+        if let wikiRes { sections.append(wikiRes) }
+        if let ghRes { sections.append(ghRes) }
+        if let echoRes { sections.append(echoRes) }
+
+        guard !sections.isEmpty else {
+            throw ToolCallError.serviceUnavailable
         }
+
+        let header = "🔍 Search Results for: \(query)\n"
+        let footer = "\n🔧 Sources: Wikipedia REST API, GitHub Search API, HTTPBin (all real calls)"
+        return ([header] + sections + [footer]).joined(separator: "\n\n")
+    }
+
+    // MARK: - Wikipedia
+    private func fetchWikipediaSummary(for query: String) async -> String? {
+        guard let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+              let url = URL(string: "https://en.wikipedia.org/api/rest_v1/page/summary/\(encoded)") else { return nil }
+
+        var request = URLRequest(url: url)
+        request.setValue("appleAI/1.0 (https://example.com)", forHTTPHeaderField: "User-Agent")
 
         do {
-            let (data, _) = try await URLSession.shared.data(from: url)
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else { return nil }
 
-            if let jsonObject = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                var searchResult = "🔍 Search Results for: \(arguments.query)\n\n"
-
-                // Abstract (instant answer)
-                if let abstract = jsonObject["Abstract"] as? String, !abstract.isEmpty {
-                    searchResult += "📝 Summary: \(abstract)\n\n"
-                }
-
-                // Answer (direct answer)
-                if let answer = jsonObject["Answer"] as? String, !answer.isEmpty {
-                    searchResult += "💡 Direct Answer: \(answer)\n\n"
-                }
-
-                // Related topics
-                if let relatedTopics = jsonObject["RelatedTopics"] as? [[String: Any]], !relatedTopics.isEmpty {
-                    searchResult += "🔗 Related Topics:\n"
-                    for (index, topic) in relatedTopics.prefix(3).enumerated() {
-                        if let text = topic["Text"] as? String {
-                            searchResult += "\(index + 1). \(text)\n"
-                        }
-                    }
-                    searchResult += "\n"
-                }
-
-                // Definition
-                if let definition = jsonObject["Definition"] as? String, !definition.isEmpty {
-                    searchResult += "📖 Definition: \(definition)\n\n"
-                }
-
-                searchResult += "🌐 Search Engine: DuckDuckGo API (Real Search)"
-
-                return searchResult.isEmpty ? "No results found for '\(arguments.query)'" : searchResult
-            } else {
-                throw ToolCallError.serviceUnavailable
+            let decoder = JSONDecoder()
+            decoder.keyDecodingStrategy = .convertFromSnakeCase
+            struct WikiSummary: Decodable {
+                let title: String?
+                let extract: String?
+                let contentUrls: ContentUrls?
+                struct ContentUrls: Decodable { let desktop: Desktop?; struct Desktop: Decodable { let page: String? } }
             }
-        } catch {
-            throw ToolCallError.networkError
-        }
+            if let summary = try? decoder.decode(WikiSummary.self, from: data) {
+                let title = summary.title ?? query
+                let extract = (summary.extract?.isEmpty == false ? summary.extract! : "No summary available.")
+                let pageURL = summary.contentUrls?.desktop?.page
+                var text = "� Wikipedia: \(title)\n\n\(extract)"
+                if let pageURL { text += "\n🔗 \(pageURL)" }
+                return text
+            }
+        } catch { /* ignore, return nil */ }
+        return nil
+    }
+
+    // MARK: - GitHub
+    private func fetchGitHubRepositories(for query: String) async -> String? {
+        guard var components = URLComponents(string: "https://api.github.com/search/repositories") else { return nil }
+        components.queryItems = [
+            URLQueryItem(name: "q", value: query),
+            URLQueryItem(name: "sort", value: "stars"),
+            URLQueryItem(name: "order", value: "desc"),
+            URLQueryItem(name: "per_page", value: "3")
+        ]
+        guard let url = components.url else { return nil }
+
+        var request = URLRequest(url: url)
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        request.setValue("appleAI/1.0", forHTTPHeaderField: "User-Agent")
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else { return nil }
+
+            let decoder = JSONDecoder()
+            decoder.keyDecodingStrategy = .convertFromSnakeCase
+            struct RepoSearch: Decodable { struct Repo: Decodable { let fullName: String?; let stargazersCount: Int?; let description: String?; let htmlUrl: String? }; let items: [Repo]? }
+            if let res = try? decoder.decode(RepoSearch.self, from: data), let items = res.items, !items.isEmpty {
+                var out = "� GitHub Top Repositories:\n"
+                for (idx, repo) in items.enumerated() {
+                    let name = repo.fullName ?? "Unknown"
+                    let stars = repo.stargazersCount ?? 0
+                    let desc = repo.description ?? "No description"
+                    let url = repo.htmlUrl ?? ""
+                    out += "\n\(idx + 1). \(name) ★\(stars)\n   \(desc)\n   \(url)"
+                }
+                return out
+            }
+        } catch { /* ignore */ }
+        return nil
+    }
+
+    // MARK: - HTTPBin
+    private func fetchHTTPBinEcho(for query: String) async -> String? {
+        guard var components = URLComponents(string: "https://httpbin.org/get") else { return nil }
+        components.queryItems = [URLQueryItem(name: "query", value: query)]
+        guard let url = components.url else { return nil }
+
+        var request = URLRequest(url: url)
+        request.setValue("appleAI/1.0", forHTTPHeaderField: "User-Agent")
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else { return nil }
+
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                let origin = json["origin"] as? String ?? "Unknown"
+                let url = json["url"] as? String ?? ""
+                if let args = json["args"] as? [String: Any], let echoed = args["query"] as? String {
+                    return "🛰️ HTTPBin Echo\nOrigin: \(origin)\nURL: \(url)\nEchoed query: \(echoed)"
+                } else {
+                    return "🛰️ HTTPBin Echo\nOrigin: \(origin)\nURL: \(url)"
+                }
+            }
+        } catch { /* ignore */ }
+        return nil
     }
 }
 
@@ -935,8 +1005,14 @@ struct ToolCallView: View {
 
         Task {
             do {
-                // Use natural language interaction with Apple Intelligence
-                let result = try await performNaturalLanguageToolCall(input: inputText)
+                // If QR tool is selected, call it directly to ensure QR renders
+                let result: ToolCallResult
+                if selectedTool == .qrGenerator {
+                    result = try await performToolCall(tool: .qrGenerator, input: inputText)
+                } else {
+                    // Use natural language interaction with Apple Intelligence
+                    result = try await performNaturalLanguageToolCall(input: inputText)
+                }
 
                 await MainActor.run {
                     withAnimation(.easeInOut) {
@@ -1111,7 +1187,7 @@ struct ToolCallView: View {
         // Create a session with SearchTool following official demo pattern
         let session = LanguageModelSession(
             tools: [SearchTool()],
-            instructions: "Help the person with internet searches using real search APIs"
+            instructions: "Help the person with internet searches using real APIs: Wikipedia, GitHub, and HTTPBin"
         )
 
         // Make a request using natural language - exactly like official demo
@@ -1124,7 +1200,7 @@ struct ToolCallView: View {
             success: true,
             metadata: [
                 "query": query,
-                "source": "DuckDuckGo API (Real Search)"
+                "source": "Wikipedia REST + GitHub Search + HTTPBin (Real Calls)"
             ]
         )
     }
@@ -1320,7 +1396,7 @@ enum ToolType: CaseIterable {
         case .weather: return "Supports major cities worldwide weather queries"
         case .calculator: return "Supports basic operators: +, -, *, /"
         case .translator: return "Supports Chinese-English translation"
-        case .search: return "Simulates internet search results"
+    case .search: return "Searches via Wikipedia, GitHub and HTTPBin"
         case .qrGenerator: return "Supports text, links and other content"
         case .colorPalette: return "Generate color schemes based on description"
         }
@@ -1435,7 +1511,7 @@ struct ToolCallResultCard: View {
                     .cornerRadius(8)
             }
 
-            // QR码显示：放宽条件，避免因类型误判而不显示
+            // 仅在二维码工具下展示二维码
             if shouldShowQRCode(for: result) {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Generated QR Code:")
@@ -1445,8 +1521,8 @@ struct ToolCallResultCard: View {
                     HStack {
                         Spacer()
 
-                        // 直接内联生成二维码（使用提取后的payload）
-                        QRCodeDisplayView(text: extractQRPayload(from: result)) { image in
+                        // 直接使用输入作为二维码内容（仅二维码工具生效）
+                        QRCodeDisplayView(text: result.input) { image in
                             self.qrImage = image
                         }
 
@@ -1482,41 +1558,12 @@ struct ToolCallResultCard: View {
 
     // MARK: - QR 显示辅助
     private func shouldShowQRCode(for result: ToolCallResult) -> Bool {
-        if !result.success { return false }
-        // 原始条件：是二维码工具
-        if result.tool == .qrGenerator { return true }
-        // 放宽：输入或输出包含明显的二维码或URL信号
-        let input = result.input
-        let output = result.output
-        return containsQRHint(in: input) || containsQRHint(in: output)
+    // 仅在二维码工具成功时显示二维码，避免搜索结果中含有 URL 时误触发
+    guard result.success else { return false }
+    return result.tool == .qrGenerator
     }
 
-    private func containsQRHint(in text: String) -> Bool {
-        let lower = text.lowercased()
-        return lower.contains("qr") || lower.contains("qrcode") || lower.contains("qr code") ||
-               text.contains("二维码") || text.contains("条码") || text.contains("扫码") ||
-               extractFirstURL(from: text) != nil
-    }
-
-    private func extractQRPayload(from result: ToolCallResult) -> String {
-        // 优先使用输入中的URL或纯文本；若无，再从输出中找URL；再兜底使用输入原文
-        if let url = extractFirstURL(from: result.input) { return url }
-        if let url = extractFirstURL(from: result.output) { return url }
-        // 清理输入中的描述性前缀（如 "Generate QR code for:")
-        let cleaned = result.input
-            .replacingOccurrences(of: "Generate QR code for:", with: "")
-            .replacingOccurrences(of: "for:", with: "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return cleaned.isEmpty ? result.input : cleaned
-    }
-
-    private func extractFirstURL(from text: String) -> String? {
-        let pattern = #"https?://[^\s]+"#
-        if let range = text.range(of: pattern, options: .regularExpression) {
-            return String(text[range])
-        }
-        return nil
-    }
+    // 删除放宽匹配与URL提取逻辑，避免误判（仅QRCode工具展示二维码）
     }
 
 
