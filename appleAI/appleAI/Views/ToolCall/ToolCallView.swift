@@ -517,6 +517,7 @@ struct ToolCallView: View {
             "Translate 'Hello world' to Chinese",
             "Search for Swift programming tutorials",
             "Generate QR code for https://apple.com",
+            "Generate QR code for {key:value}",
             "Search for 'Apple Intelligence' features and supported devices",
             "Search for latest updates about Llama 3",
             "Search for 'OpenAI o4-mini' pricing and rate limits",
@@ -1209,6 +1210,9 @@ struct ToolCallView: View {
     }
 
     private func generateQRCode(text: String) async throws -> ToolCallResult {
+        // Extract the actual payload (URL/text) from natural language input
+        let payload = extractQRPayload(from: text)
+
         // Create a session with QRGeneratorTool following official demo pattern
         let session = LanguageModelSession(
             tools: [QRGeneratorTool()],
@@ -1216,15 +1220,16 @@ struct ToolCallView: View {
         )
 
         // Make a request using natural language - exactly like official demo
-        let response = try await session.respond(to: "Generate a QR code for: \(text)")
+        let response = try await session.respond(to: "Generate a QR code for: \(payload)")
 
         return ToolCallResult(
             tool: .qrGenerator,
-            input: text,
+            input: payload, // Use extracted payload so UI encodes the correct content
             output: response.content,
             success: true,
             metadata: [
-                "text": text,
+                "originalInput": text,
+                "payload": payload,
                 "source": "QR Server API (Real QR Generation)"
             ]
         )
@@ -1326,6 +1331,153 @@ struct ToolCallView: View {
         } catch {
             throw ToolCallError.invalidExpression
         }
+    }
+
+    // Extract the intended QR payload (URL or text) from natural language input
+    private func extractQRPayload(from input: String) -> String {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lower = trimmed.lowercased()
+
+        // 1) Prefer first URL
+        if let url = firstMatch(in: trimmed, pattern: #"https?://[^\s\)\]\}"']+"#, options: []) {
+            return sanitizePayload(url)
+        }
+
+        // 2) Quoted text (English/Chinese quotes)
+        let quotePatterns = [
+            #"\"([^\"]+)\""#,
+            #"'([^']+)'"#,
+            #"[“]([^”]+)[”]"#,
+            #"[‘]([^’]+)[’]"#
+        ]
+        for p in quotePatterns {
+            if let q = firstMatch(in: trimmed, pattern: p, options: []) {
+                return sanitizePayload(q)
+            }
+        }
+
+        // 3) English intent patterns: prefer capturing after explicit connectors
+        // Examples:
+        //  - "Generate QR code for {key:value}" -> "{key:value}"
+        //  - "generate qr code, the content is hello" -> "the content is hello" (then sanitized further)
+        let enPatterns = [
+            #"(?i)(?:generate|create|make)\s+(?:a\s+)?(?:qr\s*code|qrcode|qr)\s*(?:for|with|of|:)\s*(.+)$"#,
+            #"(?i)(?:qr\s*(?:code)?)\s*(?:for|with|of|:)\s*(.+)$"#,
+            #"(?i)for\s+(.+)$"#,
+            // Fallback: anything after the phrase (may still include leading words like 'for', sanitized later)
+            #"(?i)(?:generate|create|make)\s+(?:a\s+)?(?:qr\s*code|qrcode|qr)\s*[,;:\-]?\s*(.+)$"#
+        ]
+        for p in enPatterns {
+            if let t = firstMatch(in: trimmed, pattern: p, options: [.caseInsensitive], group: 1) {
+        return sanitizePayload(t)
+            }
+        }
+
+    // 4) Chinese intent patterns, including punctuation and lead-ins
+    let cnPatterns = [
+        #"生成(?:一个)?(?:二维码)?[，,：:]?\s*(.+)$"#,
+        #"为\s*(.+?)\s*生成(?:一个)?二维码"#,
+        #"生成\s*(.+?)\s*的二维码"#,
+        #"(?:二维码)?内容[是为：:，,]?\s*(.+)$"#
+    ]
+        for p in cnPatterns {
+            if let t = firstMatch(in: trimmed, pattern: p, options: [], group: 1) {
+        return sanitizePayload(t)
+            }
+        }
+
+    // 5) If the string starts with a known lead-in, drop it
+    let leadIns = [
+        "generate qr code for ",
+        "generate qrcode for ",
+        "qr for ",
+        "make qr code for ",
+        "create qr code for ",
+        // also accept without "for"
+        "generate qr code ",
+        "generate qrcode ",
+        "create qr code ",
+        "make qr code "
+    ]
+        for lead in leadIns {
+            if lower.hasPrefix(lead) {
+                let start = trimmed.index(trimmed.startIndex, offsetBy: lead.count)
+        return sanitizePayload(String(trimmed[start...]))
+            }
+        }
+
+        // Fallback: return the original trimmed text
+    return sanitizePayload(trimmed)
+    }
+
+    private func firstMatch(in text: String, pattern: String, options: NSRegularExpression.Options, group: Int = 1) -> String? {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: options) else { return nil }
+        let range = NSRange(location: 0, length: text.utf16.count)
+        guard let match = regex.firstMatch(in: text, options: [], range: range) else { return nil }
+        guard group <= match.numberOfRanges - 1 else { return nil }
+        if let substring = text.substring(with: match.range(at: group)) {
+            return substring
+        }
+        return nil
+    }
+
+    private func sanitizePayload(_ text: String) -> String {
+        var s = text.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Strip surrounding quotes
+        if (s.hasPrefix("\"") && s.hasSuffix("\"")) || (s.hasPrefix("'") && s.hasSuffix("'")) ||
+            (s.hasPrefix("“") && s.hasSuffix("”")) || (s.hasPrefix("‘") && s.hasSuffix("’")) {
+            s = String(s.dropFirst().dropLast())
+        }
+
+        // Drop common lead-in phrases like "the content is", "内容是"
+        let lower = s.lowercased()
+        let enLeadIns = [
+            "the content is ", "content is ", "text is ", "message is ", "payload is ",
+            "content:", "content: ", "text:", "text: ", "message:", "message: ", "payload:", "payload: "
+        ]
+        for lead in enLeadIns {
+            if lower.hasPrefix(lead) {
+                let start = s.index(s.startIndex, offsetBy: lead.count)
+                s = String(s[start...])
+                break
+            }
+        }
+        // Chinese lead-ins
+        let cnLeadIns = ["内容是", "内容为", "内容：", "文本是", "文本为", "文本：", "二维码内容是", "二维码内容为", "二维码内容："]
+        for lead in cnLeadIns {
+            if s.hasPrefix(lead) {
+                let start = s.index(s.startIndex, offsetBy: lead.count)
+                s = String(s[start...])
+                break
+            }
+        }
+
+        s = s.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Remove common leading punctuation
+        while let first = s.first, ",[).;:、，。；：-]".contains(first) {
+            s.removeFirst()
+        }
+
+        // Remove leading connector words like "for ", "with ", "of ", "to "
+        var lowerLead = s.lowercased()
+        let connectorLeadIns = ["for ", "with ", "of ", "to "]
+        for lead in connectorLeadIns {
+            if lowerLead.hasPrefix(lead) {
+                let start = s.index(s.startIndex, offsetBy: lead.count)
+                s = String(s[start...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                lowerLead = s.lowercased()
+                break
+            }
+        }
+        // Remove common trailing punctuation
+        while let last = s.last, ",[).;:、，。；：]".contains(last) {
+            s.removeLast()
+        }
+
+        s = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        return s.isEmpty ? text.trimmingCharacters(in: .whitespacesAndNewlines) : s
     }
 }
 
@@ -1464,6 +1616,7 @@ struct ToolSelectorCard: View {
 struct ToolCallResultCard: View {
     let result: ToolCallResult
     @State private var showShareSheet = false
+    @State private var shareItems: [Any] = []
     @State private var qrImage: UIImage?
 
     var body: some View {
@@ -1488,12 +1641,24 @@ struct ToolCallResultCard: View {
                 // QR码分享按钮：与显示逻辑保持一致
                 if shouldShowQRCode(for: result) && result.success {
                     Button(action: {
+                        // Prepare share items only when QR image is available
+                        guard let img = qrImage else { return }
+                        var items: [Any] = [img]
+                        let trimmed = result.input.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if let url = URL(string: trimmed), let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme) {
+                            items.append(url)
+                        } else {
+                            items.append(trimmed)
+                        }
+                        shareItems = items
                         showShareSheet = true
                     }) {
                         Image(systemName: "square.and.arrow.up")
                             .foregroundColor(.blue)
                     }
                     .buttonStyle(PlainButtonStyle())
+                    .disabled(qrImage == nil)
+                    .opacity(qrImage == nil ? 0.4 : 1.0)
                 }
 
                 Image(systemName: result.success ? "checkmark.circle.fill" : "xmark.circle.fill")
@@ -1553,9 +1718,7 @@ struct ToolCallResultCard: View {
         .cornerRadius(16)
         .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
         .sheet(isPresented: $showShareSheet) {
-            if let image = qrImage {
-                ShareSheet(activityItems: [image, result.input])
-            }
+            ShareSheet(activityItems: shareItems)
         }
     }
 
