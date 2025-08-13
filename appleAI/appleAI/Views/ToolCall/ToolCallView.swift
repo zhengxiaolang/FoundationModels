@@ -517,8 +517,11 @@ struct ToolCallView: View {
             "Translate 'Hello world' to Chinese",
             "Search for Swift programming tutorials",
             "Generate QR code for https://apple.com",
-            "Create a color palette for ocean theme",
-            "Is it hotter in Boston or New York?",
+            "Search for 'Apple Intelligence' features and supported devices",
+            "Search for latest updates about Llama 3",
+            "Search for 'OpenAI o4-mini' pricing and rate limits",
+            "Search for 'Qwen2.5' model benchmarks",
+            "Search for 'Mistral Large' API examples",
             "What's 15% of 200?"
         ]
     }
