@@ -92,19 +92,63 @@ struct CalculatorTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> String {
-        // Simple calculation using NSExpression
-        let cleanExpression = arguments.expression.trimmingCharacters(in: .whitespacesAndNewlines)
-
+        // Handle natural language expressions by preprocessing them
+        let originalExpression = arguments.expression.trimmingCharacters(in: .whitespacesAndNewlines)
+        let preprocessedExpression = preprocessNaturalLanguage(originalExpression)
+        
         do {
-            let nsExpression = NSExpression(format: cleanExpression)
+            let nsExpression = NSExpression(format: preprocessedExpression)
             if let result = nsExpression.expressionValue(with: nil, context: nil) as? NSNumber {
-                return "The result of '\(cleanExpression)' is \(result.doubleValue)"
+                return "The result of '\(originalExpression)' is \(result.doubleValue)"
             } else {
-                throw CalculationError.invalidExpression
+                return "Error: Unable to evaluate the expression '\(originalExpression)'"
             }
         } catch {
-            throw CalculationError.evaluationFailed
+            return "Error: Unable to parse the expression '\(originalExpression)'. Please check the format."
         }
+    }
+    
+    private func preprocessNaturalLanguage(_ expression: String) -> String {
+        var processed = expression.lowercased()
+        
+        // Handle percentage calculations
+        // "15% of 200" -> "15 * 200 / 100"
+        let percentPattern = #"(\d+(?:\.\d+)?)%\s+of\s+(\d+(?:\.\d+)?)"#
+        if let regex = try? NSRegularExpression(pattern: percentPattern, options: []) {
+            let range = NSRange(location: 0, length: processed.utf16.count)
+            if let match = regex.firstMatch(in: processed, options: [], range: range) {
+                let percentRange = match.range(at: 1)
+                let numberRange = match.range(at: 2)
+                if let percentStr = processed.substring(with: percentRange),
+                   let numberStr = processed.substring(with: numberRange) {
+                    return "\(percentStr) * \(numberStr) / 100"
+                }
+            }
+        }
+        
+        // Handle "X equals Y" or "X == Y" comparisons - convert to subtraction to check difference
+        processed = processed.replacingOccurrences(of: " equals ", with: " - ")
+        processed = processed.replacingOccurrences(of: " == ", with: " - ")
+        processed = processed.replacingOccurrences(of: "==", with: " - ")
+        
+        // Handle word-based operations
+        processed = processed.replacingOccurrences(of: " plus ", with: " + ")
+        processed = processed.replacingOccurrences(of: " minus ", with: " - ")
+        processed = processed.replacingOccurrences(of: " times ", with: " * ")
+        processed = processed.replacingOccurrences(of: " divided by ", with: " / ")
+        processed = processed.replacingOccurrences(of: " multiply by ", with: " * ")
+        processed = processed.replacingOccurrences(of: " multiplied by ", with: " * ")
+        
+        return processed
+    }
+}
+
+// Extension to help with string operations
+extension String {
+    func substring(with nsRange: NSRange) -> String? {
+        guard nsRange.location != NSNotFound else { return nil }
+        let range = Range(nsRange, in: self)
+        return range.map { String(self[$0]) }
     }
 }
 
@@ -772,7 +816,7 @@ struct ToolCallView: View {
         scores[.weather] = countKeywords(in: lowercaseInput, keywords: weatherKeywords)
 
         // 计算相关关键词
-        let calculatorKeywords = ["calculate", "计算", "math", "数学", "+", "-", "*", "/", "×", "÷", "plus", "minus", "multiply", "divide", "加", "减", "乘", "除", "等于", "=", "result", "结果"]
+        let calculatorKeywords = ["calculate", "计算", "math", "数学", "+", "-", "*", "/", "×", "÷", "plus", "minus", "multiply", "divide", "加", "减", "乘", "除", "等于", "=", "result", "结果", "%", "percent", "percentage", "of"]
         scores[.calculator] = countKeywords(in: lowercaseInput, keywords: calculatorKeywords)
 
         // 翻译相关关键词
@@ -794,6 +838,25 @@ struct ToolCallView: View {
         // 特殊模式检测
         if containsNumbers(lowercaseInput) && containsMathOperators(lowercaseInput) {
             scores[.calculator] = (scores[.calculator] ?? 0) + 5
+        }
+        
+        // 百分比表达式检测
+        if lowercaseInput.contains("%") && lowercaseInput.contains("of") {
+            scores[.calculator] = (scores[.calculator] ?? 0) + 10  // 高优先级
+        }
+        
+        // 数学表达式模式检测
+        let mathPatterns = [
+            #"\d+\s*%\s*of\s*\d+"#,  // "15% of 200"
+            #"\d+\s*[+\-*/]\s*\d+"#,  // "5 + 3"
+            #"\d+\s*(plus|minus|times|divided by)\s*\d+"#  // "5 plus 3"
+        ]
+        
+        for pattern in mathPatterns {
+            if lowercaseInput.range(of: pattern, options: .regularExpression) != nil {
+                scores[.calculator] = (scores[.calculator] ?? 0) + 8
+                break
+            }
         }
 
         if containsURL(lowercaseInput) {
@@ -833,7 +896,7 @@ struct ToolCallView: View {
     }
 
     private func containsMathOperators(_ text: String) -> Bool {
-        let operators = ["+", "-", "*", "/", "×", "÷", "="]
+        let operators = ["+", "-", "*", "/", "×", "÷", "=", "%", "of"]
         return operators.contains { text.contains($0) }
     }
 
