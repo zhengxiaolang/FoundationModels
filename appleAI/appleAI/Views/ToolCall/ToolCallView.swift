@@ -859,7 +859,14 @@ struct ToolCallView: View {
             "Search for 'OpenAI o4-mini' pricing and rate limits",
             "Search for 'Qwen2.5' model benchmarks",
             "Search for 'Mistral Large' API examples",
-            "What's 15% of 200?"
+            "What's 15% of 200?",
+            // General tool examples (no specific tool keywords)
+            "刺猬是什么动物?",
+            "Explain what a hedgehog is",
+            "Give a one sentence summary of photosynthesis",
+            "What does CPU stand for?",
+            "列出三个可再生能源",
+            "Who wrote The Little Prince?"
         ]
     }
 
@@ -1224,12 +1231,24 @@ struct ToolCallView: View {
         let lowercaseInput = input.lowercased()
         var scores: [ToolType: Int] = [:]
 
+        // Detect definitional / explanatory prompts early (broader pattern set)
+        let definitionalIndicators = [
+            // English
+            "what is", "what's", "explain", "define", "definition", "describe", "give a one sentence", "one sentence", "summary", "summarize", "list", "give me", "show me", "who is", "who wrote", "who invented", "when was", "where is",
+            // Chinese
+            "是什么", "解释", "说明", "定义", "介绍", "概述", "总结", "简述", "列出", "是谁", "谁写", "谁发明", "什么时候", "在哪里"
+        ]
+        let isDefinitional = definitionalIndicators.contains { kw in
+            lowercaseInput.hasPrefix(kw) || lowercaseInput.contains(" " + kw) || lowercaseInput.contains(kw + " ")
+        }
+
         // 天气相关关键词
         let weatherKeywords = ["weather", "天气", "temperature", "温度", "forecast", "预报", "rain", "下雨", "sunny", "晴天", "cloudy", "多云", "hot", "热", "cold", "冷", "wind", "风"]
         scores[.weather] = countKeywords(in: lowercaseInput, keywords: weatherKeywords)
 
         // 计算相关关键词
-        let calculatorKeywords = ["calculate", "计算", "math", "数学", "+", "-", "*", "/", "×", "÷", "plus", "minus", "multiply", "divide", "加", "减", "乘", "除", "等于", "=", "result", "结果", "%", "percent", "percentage", "of"]
+    // Removed solitary 'of' to avoid false calculator suggestions like "Give a one sentence summary of ..."
+    let calculatorKeywords = ["calculate", "计算", "math", "数学", "+", "-", "*", "/", "×", "÷", "plus", "minus", "multiply", "divide", "加", "减", "乘", "除", "等于", "=", "result", "结果", "%", "percent", "percentage"]
         scores[.calculator] = countKeywords(in: lowercaseInput, keywords: calculatorKeywords)
 
         // 翻译相关关键词
@@ -1285,6 +1304,12 @@ struct ToolCallView: View {
             scores[.weather] = (scores[.weather] ?? 0) + 3
         }
 
+        // If definitional prompt and no explicit weather keyword (only city name noise), suppress weather score
+        if isDefinitional {
+            let explicitWeatherHit = weatherKeywords.contains { lowercaseInput.contains($0) }
+            if !explicitWeatherHit { scores[.weather] = 0 }
+        }
+
         // 额外：紧凑凭据短语直接加权（"user and pwd is u,p"）
         if lowercaseInput.range(of: #"(?i)user\s*and\s*pwd\s*is\s*[^,\s]+\s*,\s*[^,\s]+"#, options: .regularExpression) != nil {
             scores[.login] = (scores[.login] ?? 0) + 5
@@ -1309,6 +1334,28 @@ struct ToolCallView: View {
         if (lowercaseInput.contains("password") || lowercaseInput.contains("pwd") || lowercaseInput.contains("用户名") || lowercaseInput.contains("密码")) &&
             !(lowercaseInput.contains("+") || lowercaseInput.contains("-") || lowercaseInput.contains("*") || lowercaseInput.contains("×") || lowercaseInput.contains("÷") || lowercaseInput.contains("/ ")) {
             if let calc = scores[.calculator], calc > 0 { scores[.calculator] = max(0, calc - 2) }
+        }
+
+        // 如果所有特定工具分数都为0，使用 general
+        let allSpecific: [ToolType] = [.weather, .calculator, .translator, .search, .qrGenerator, .colorPalette, .login]
+        if allSpecific.allSatisfy({ (scores[$0] ?? 0) == 0 }) {
+            suggestedTool = .general
+            selectedTool = .general
+            return
+        }
+
+        // Strong override: definitional prompt with mixed incidental keywords still routes to general if no high math/login/search signals
+        if isDefinitional {
+            let strongTools: [ToolType] = [.calculator, .login, .translator, .qrGenerator]
+            let hasStrong = strongTools.contains { (scores[$0] ?? 0) > 0 }
+            if !hasStrong { // allow search if explicitly asked via search keywords
+                let searchScore = scores[.search] ?? 0
+                if searchScore == 0 { // no explicit search intent
+                    suggestedTool = .general
+                    selectedTool = .general
+                    return
+                }
+            }
         }
 
         // 找到得分最高的工具
@@ -1387,6 +1434,9 @@ struct ToolCallView: View {
         } else if currentTool == .login {
             // Use natural language from input box to parse credentials and login
             result = try await performLogin(naturalInput: inputText)
+        } else if currentTool == .general {
+            // Lightweight general answer without loading all tools
+            result = try await performGeneralAnswer(query: inputText)
                 } else {
                     // Use natural language interaction with Apple Intelligence
                     result = try await performNaturalLanguageToolCall(input: inputText)
@@ -1489,7 +1539,7 @@ struct ToolCallView: View {
         } else if lowercaseInput.contains("login") || input.contains("登录") || input.contains("登陆") || input.contains("账号") {
             return .login
         } else {
-            return selectedTool // fallback to selected tool
+            return .general // fallback now goes to general tool
         }
     }
 
@@ -1510,6 +1560,8 @@ struct ToolCallView: View {
             return try await generateColorPalette(description: input)
         case .login:
             return try await performLogin(naturalInput: input)
+        case .general:
+            return try await performGeneralAnswer(query: input)
         }
     }
 
@@ -1534,6 +1586,23 @@ struct ToolCallView: View {
                 "city": location,
                 "source": "Apple Intelligence WeatherTool"
             ]
+        )
+    }
+
+    private func performGeneralAnswer(query: String) async throws -> ToolCallResult {
+        // Truncate overly long queries defensively (simple char cap)
+        let maxChars = 2000
+        let trimmedQuery = query.count > maxChars ? String(query.prefix(maxChars)) + "..." : query
+        let session = LanguageModelSession(
+            instructions: "You are a concise factual assistant. Answer directly without extra prelude."
+        )
+        let response = try await session.respond(to: trimmedQuery)
+        return ToolCallResult(
+            tool: .general,
+            input: trimmedQuery,
+            output: response.content,
+            success: true,
+            metadata: ["method": "General answer", "naturalLanguage": "true"]
         )
     }
 
@@ -2022,6 +2091,7 @@ enum ToolType: CaseIterable {
     case qrGenerator
     case colorPalette
     case login
+    case general
 
     var displayName: String {
         switch self {
@@ -2032,6 +2102,7 @@ enum ToolType: CaseIterable {
         case .qrGenerator: return "QR Generator"
         case .colorPalette: return "Color Palette"
     case .login: return "Login"
+    case .general: return "General"
         }
     }
 
@@ -2044,6 +2115,7 @@ enum ToolType: CaseIterable {
         case .qrGenerator: return "Generate QR codes"
         case .colorPalette: return "Generate theme colors"
     case .login: return "Authenticate to a site via API"
+    case .general: return "General question answering"
         }
     }
 
@@ -2056,6 +2128,7 @@ enum ToolType: CaseIterable {
         case .qrGenerator: return "qrcode"
         case .colorPalette: return "paintbrush"
     case .login: return "lock"
+    case .general: return "questionmark.circle"
         }
     }
 
@@ -2069,6 +2142,7 @@ enum ToolType: CaseIterable {
         case .colorPalette: return .pink
         // Updated to a more visually appealing accent color instead of gray
     case .login: return .teal
+    case .general: return Color.indigo // brighter than gray
         }
     }
 
@@ -2081,6 +2155,7 @@ enum ToolType: CaseIterable {
         case .qrGenerator: return "Enter text to generate QR code"
         case .colorPalette: return "Describe color theme, e.g.: Spring"
     case .login: return "login username=... password=... site=https://..."
+    case .general: return "Ask any general question"
         }
     }
 
@@ -2093,6 +2168,7 @@ enum ToolType: CaseIterable {
         case .qrGenerator: return "Supports text, links and other content"
         case .colorPalette: return "Generate color schemes based on description"
     case .login: return "POSTs credentials to /services/User/Login; returns status and r-token header"
+    case .general: return "Fallback tool for questions not matched by other tools"
         }
     }
 }
