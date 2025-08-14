@@ -1344,19 +1344,9 @@ struct ToolCallView: View {
             return
         }
 
-        // Strong override: definitional prompt with mixed incidental keywords still routes to general if no high math/login/search signals
-        if isDefinitional {
-            let strongTools: [ToolType] = [.calculator, .login, .translator, .qrGenerator]
-            let hasStrong = strongTools.contains { (scores[$0] ?? 0) > 0 }
-            if !hasStrong { // allow search if explicitly asked via search keywords
-                let searchScore = scores[.search] ?? 0
-                if searchScore == 0 { // no explicit search intent
-                    suggestedTool = .general
-                    selectedTool = .general
-                    return
-                }
-            }
-        }
+    // Removed previous strong definitional override: now ONLY fall back to .general
+    // when every specific tool score is zero (handled earlier). This ensures we
+    // first attempt to match concrete tool intents before choosing General.
 
         // 找到得分最高的工具
         let maxScore = scores.values.max() ?? 0
@@ -1568,25 +1558,93 @@ struct ToolCallView: View {
     // MARK: - Tool Call Implementation
 
     private func getWeatherInfo(for location: String) async throws -> ToolCallResult {
-        // Create a session with WeatherTool following official demo pattern
+        // Extract probable city token from natural language (fallback to original input)
+        let city = extractCityToken(from: location) ?? location
+
+        // Create a session with WeatherTool following official demo pattern (use clean city)
         let session = LanguageModelSession(
             tools: [WeatherTool()],
             instructions: "Help the person with getting weather information"
         )
 
-        // Make a request using natural language - exactly like official demo
-        let response = try await session.respond(to: "What's the weather like in \(location)?")
+        // Ask explicitly with the isolated city to improve tool argument grounding
+        let prompt = "What's the weather like in \(city)?"
+        let response = try await session.respond(to: prompt)
 
         return ToolCallResult(
             tool: .weather,
-            input: location,
+            input: city,
             output: response.content,
             success: true,
             metadata: [
-                "city": location,
+                "originalInput": location,
+                "city": city,
                 "source": "Apple Intelligence WeatherTool"
             ]
         )
+    }
+
+    // Heuristic city extraction supporting English question sentences & Chinese phrases
+    private func extractCityToken(from raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return nil }
+        let lower = trimmed.lowercased()
+
+        // Known city lexicon (can be expanded / externalized)
+        let cityMap: [String: [String]] = [
+            "beijing": ["beijing", "北京"],
+            "shanghai": ["shanghai", "上海"],
+            "guangzhou": ["guangzhou", "广州"],
+            "shenzhen": ["shenzhen", "深圳"],
+            "tokyo": ["tokyo", "东京"],
+            "new york": ["new york", "纽约"],
+            "london": ["london", "伦敦"],
+            "paris": ["paris", "巴黎"],
+            "boston": ["boston", "波士顿"],
+            "seattle": ["seattle", "西雅图"]
+        ]
+
+        // Direct Chinese city phrase like “北京天气” → strip trailing “天气”/“气温” etc.
+        if trimmed.count <= 6, trimmed.hasSuffix("天气") {
+            let base = String(trimmed.dropLast(2))
+            if !base.isEmpty { return base }
+        }
+
+        // Pattern: weather in <city>
+        if let range = lower.range(of: #"weather\s+in\s+([a-z\s]+)"#, options: .regularExpression) {
+            let segment = String(lower[range])
+            if let cityRange = segment.range(of: #"in\s+([a-z\s]+)"#, options: .regularExpression) {
+                let afterIn = segment[cityRange]
+                let cleaned = afterIn.replacingOccurrences(of: "in", with: "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if let matched = matchCityToken(in: cleaned, from: cityMap) { return matched }
+            }
+        }
+
+        // Fallback: scan lexicon tokens appearing in string (prefer longest multi-word)
+        var found: String? = nil
+        for (canonical, variants) in cityMap {
+            for v in variants {
+                if lower.contains(v) {
+                    // prefer longer name if multiple hits
+                    if let current = found {
+                        if canonical.count > current.count { found = canonical }
+                    } else { found = canonical }
+                }
+            }
+        }
+        return found
+    }
+
+    private func matchCityToken(in candidate: String, from lexicon: [String: [String]]) -> String? {
+        let c = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+        if c.isEmpty { return nil }
+        for (canonical, variants) in lexicon {
+            if variants.contains(where: { c == $0 }) { return canonical }
+            // Partial containment for multi-word english like "new york"
+            if canonical == "new york" && c.contains("new") && c.contains("york") { return canonical }
+        }
+        return nil
     }
 
     private func performGeneralAnswer(query: String) async throws -> ToolCallResult {
