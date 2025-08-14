@@ -9,8 +9,10 @@ import SwiftUI
 import FoundationModels
 import CoreImage
 import CoreImage.CIFilterBuiltins
+import Compression
 
 // MARK: - Tool Implementations following Apple Intelligence Demo Pattern
+// NOTE: Original simple LoginTool removed; consolidated logic now lives in the extended LoginTool
 
 struct WeatherTool: Tool {
     let name = "getWeather"
@@ -499,167 +501,137 @@ final class SimpleCookieJar {
 
 struct LoginTool: Tool {
     let name = "login"
-    let description = "Authenticate to a site by posting credentials to its login API"
+    let description = "Authenticate (TestVC style) via preflight + /services/User/Login"
 
     @Generable
     struct Arguments {
         @Guide(description: "Username for login") var username: String
         @Guide(description: "Password for login") var password: String
-        @Guide(description: "Domain, can be empty if not required") var domain: String
+        @Guide(description: "Domain (can be empty)") var domain: String
         @Guide(description: "Base site address, e.g. https://aiwin.sogoodsofast.com/SAWS-WebAPI") var siteaddress: String
-        @Guide(description: "Authentication type, default 0") var authenticationType: Int
-    @Guide(description: "Optional x-token header if server expects it (some environments return 403 without it)") var xToken: String?
-    @Guide(description: "Optional y-token header if server expects it") var yToken: String?
+        @Guide(description: "Authentication type (default 0)") var authenticationType: Int
     }
 
     func call(arguments: Arguments) async throws -> String {
-        // Build URL: {siteaddress}/services/User/Login
-        var base = arguments.siteaddress.trimmingCharacters(in: .whitespacesAndNewlines)
-        if base.hasSuffix("/") { base.removeLast() }
-        guard let url = URL(string: base + "/services/User/Login") else {
-            throw ToolCallError.invalidExpression
-        }
+        // Mirror TestVC.m: 1) gettokenInfo (preflight POST to base) 2) loginWithHeaderDic (POST to /services/User/Login)
+        let baseRaw = arguments.siteaddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        let base = baseRaw.hasSuffix("/") ? String(baseRaw.dropLast()) : baseRaw
+        guard let baseURL = URL(string: base) else { throw ToolCallError.invalidExpression }
+        let loginURLString = base + "/services/User/Login"
+        guard let loginURL = URL(string: loginURLString) else { throw ToolCallError.invalidExpression }
 
-        // Preflight fetch /phone/ to seed cookies if none present
-        if let host = url.host, SimpleCookieJar.shared.cookieHeader(for: host) == nil,
-           let preURL = URL(string: base + "/phone/") {
-            var preReq = URLRequest(url: preURL)
-            preReq.httpMethod = "GET"
-            preReq.setValue(base, forHTTPHeaderField: "Origin")
-            preReq.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36", forHTTPHeaderField: "User-Agent")
-            preReq.setValue("no-cache", forHTTPHeaderField: "Pragma")
-            preReq.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
-            do {
-                let (_, preResp) = try await URLSession.shared.data(for: preReq)
-                if let httpPre = preResp as? HTTPURLResponse {
-                    httpPre.allHeaderFields.forEach { k, v in
-                        if String(describing: k).lowercased() == "set-cookie", let sc = v as? String, let host = url.host {
-                            SimpleCookieJar.shared.store(setCookie: sc, host: host)
-                        }
-                    }
-                }
-            } catch { /* ignore preflight errors */ }
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json; charset=UTF-8", forHTTPHeaderField: "Content-Type")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("4", forHTTPHeaderField: "cipplatform")
-        // Emulate Chrome desktop headers (per successful capture)
-        request.setValue("en-US", forHTTPHeaderField: "Accept-Language")
-        request.setValue("no-cache", forHTTPHeaderField: "Pragma")
-        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
-        request.setValue("gzip, deflate, br, zstd", forHTTPHeaderField: "Accept-Encoding")
-        request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36", forHTTPHeaderField: "User-Agent")
-        request.setValue(base, forHTTPHeaderField: "Origin")
-        request.setValue(base + "/phone/", forHTTPHeaderField: "Referer")
-        request.setValue("empty", forHTTPHeaderField: "Sec-Fetch-Dest")
-        request.setValue("cors", forHTTPHeaderField: "Sec-Fetch-Mode")
-        request.setValue("same-origin", forHTTPHeaderField: "Sec-Fetch-Site")
-        request.setValue("?0", forHTTPHeaderField: "Sec-CH-UA-Mobile")
-        request.setValue("\"macOS\"", forHTTPHeaderField: "Sec-CH-UA-Platform")
-        request.setValue("\"Not;A=Brand\";v=\"99\", \"Google Chrome\";v=\"139\", \"Chromium\";v=\"139\"", forHTTPHeaderField: "Sec-CH-UA")
-    if let host = url.host, let ck = SimpleCookieJar.shared.cookieHeader(for: host) { request.setValue(ck, forHTTPHeaderField: "Cookie") }
-        // Optional tokens if provided by caller (will not be sent if nil/empty)
-        if let x = arguments.xToken, !x.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            request.setValue(x, forHTTPHeaderField: "x-token")
-        }
-        if let y = arguments.yToken, !y.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            request.setValue(y, forHTTPHeaderField: "y-token")
-        }
-
-        // JSON body
         let body: [String: Any] = [
             "username": arguments.username,
             "password": arguments.password,
             "domain": arguments.domain,
-            "siteaddress": arguments.siteaddress,
+            "siteaddress": base,
             "authenticationType": arguments.authenticationType
         ]
 
+        // Step 1: Preflight (simulate JavaScript xhr + window.req.generalHeaders)
+        var preHeaders: [String: String] = [:]
         do {
-            request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        } catch {
-            throw ToolCallError.invalidExpression
-        }
-
-        do {
-            // Retry mechanism: up to 2 attempts if 403
-            var attempt = 0
-            var data: Data = Data()
-            var response: URLResponse = URLResponse()
-            var http: HTTPURLResponse!
-            var last403Body: String? = nil
-            repeat {
-                attempt += 1
-                (data, response) = try await URLSession.shared.data(for: request)
-                guard let h = response as? HTTPURLResponse else { throw ToolCallError.networkError }
-                http = h
-                if http.statusCode == 403 {
-                    last403Body = String(data: data, encoding: .utf8)
-                    // Clear cookies then preflight again before retry
-                    if attempt == 1, let host = url.host { SimpleCookieJar.shared.clear(host: host) }
-                } else { break }
-            } while http.statusCode == 403 && attempt < 2
-
-            // Default summary and raw body fallback
-            var parsedSummary = ""
-            var rawBodySnippet = ""
-
-            if data.isEmpty {
-                rawBodySnippet = "(empty body)"
-            } else {
-                // Attempt JSON parse first
-                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                    var safeJson = json
-                    safeJson.removeValue(forKey: "password")
-                    if let msg = safeJson["message"] as? String { parsedSummary = msg }
-                    else if let success = safeJson["success"] as? Bool { parsedSummary = success ? "Login success" : "Login failed" }
-                    else { parsedSummary = "JSON parsed" }
-                    // Provide compact JSON snippet
-                    if let snippetData = try? JSONSerialization.data(withJSONObject: safeJson, options: [.sortedKeys]),
-                       let snippet = String(data: snippetData, encoding: .utf8) {
-                        rawBodySnippet = String(snippet.prefix(400))
+            var preReq = URLRequest(url: baseURL)
+            preReq.httpMethod = "POST"
+            preReq.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            preReq.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
+            preReq.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
+            preReq.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+            preReq.setValue("no-cache", forHTTPHeaderField: "Pragma")
+            preReq.setValue(userAgentString(), forHTTPHeaderField: "User-Agent")
+            preReq.httpBody = try JSONSerialization.data(withJSONObject: body)
+            let (_, response) = try await URLSession.shared.data(for: preReq)
+            if let http = response as? HTTPURLResponse {
+                if let setCookie = http.allHeaderFields.first(where: { String(describing: $0.key).lowercased() == "set-cookie" })?.value as? String {
+                    preHeaders["Cookie"] = setCookie
+                }
+                // Copy token/session related headers
+                http.allHeaderFields.forEach { k, v in
+                    if let ks = k as? String, let vs = v as? String {
+                        let lk = ks.lowercased()
+                        if lk.contains("token") || lk.contains("auth") || lk.contains("session") {
+                            preHeaders[ks] = vs
+                        }
                     }
+                }
+            }
+        } catch {
+            // Fallback basic headers if preflight fails
+        }
+        // Ensure base mandatory headers (as in TestVC AFNetworking setup + inferred browser headers)
+        preHeaders["Content-Type"] = "application/json"
+        preHeaders["X-Requested-With"] = "XMLHttpRequest"
+        preHeaders["Accept"] = "application/json, text/plain, */*"
+        preHeaders["User-Agent"] = userAgentString()
+
+        // Step 2: Actual Login
+        var loginReq = URLRequest(url: loginURL)
+        loginReq.httpMethod = "POST"
+        preHeaders.forEach { loginReq.setValue($0.value, forHTTPHeaderField: $0.key) }
+        do { loginReq.httpBody = try JSONSerialization.data(withJSONObject: body) } catch { throw ToolCallError.invalidExpression }
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: loginReq)
+            guard let http = response as? HTTPURLResponse else { throw ToolCallError.networkError }
+            let code = http.statusCode
+            let text = String(data: data, encoding: .utf8)
+            if code == 200 {
+                if let t = text, let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    // JSON success
+                    return """
+                    🔐 Login Successful (JSON)
+                    User: \(arguments.username)
+                    Site: \(base)
+                    Endpoint: /services/User/Login
+                    Status: 200 OK
+                    JSON: \(compactJSONString(json))
+                    Headers Used: \(preHeaders.keys.joined(separator: ", "))
+                    """
+                } else if let t = text, !t.isEmpty {
+                    // Text body (like setLoginInfo usage)
+                    return """
+                    🔐 Login Successful (Text)
+                    User: \(arguments.username)
+                    Site: \(base)
+                    Endpoint: /services/User/Login
+                    Status: 200 OK
+                    Body: \(t.prefix(800))
+                    (Ready for JavaScript setLoginInfo equivalent)
+                    """
                 } else {
-                    // Fallback treat as text
-                    rawBodySnippet = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "(binary body)"
-                    parsedSummary = rawBodySnippet.isEmpty ? "Received non-JSON or empty body" : "Non-JSON body"
+                    return """
+                    🔐 Login Successful (Empty/Binary)
+                    User: \(arguments.username)
+                    Site: \(base)
+                    Endpoint: /services/User/Login
+                    Status: 200 OK
+                    """
                 }
+            } else {
+                return """
+                ❌ Login Failed (HTTP \(code))
+                User: \(arguments.username)
+                Site: \(base)
+                Endpoint: /services/User/Login
+                Error Body: \(text ?? "<none>")
+                Sent Headers: \(preHeaders.map { "\($0.key)=\($0.value)" }.joined(separator: "; "))
+                Troubleshoot: check credentials / network / server availability
+                """
             }
-
-            // Capture r-token if present
-            let headers = http.allHeaderFields
-            let rToken = headers.first { (key, _) in
-                String(describing: key).lowercased() == "r-token"
-            }?.value as? String
-
-            let statusLine = "HTTP Status: \(http.statusCode)"
-            let tokenLine = rToken != nil ? "r-token: \(rToken!)" : "r-token: (none)"
-
-            // Store any Set-Cookie(s)
-            if let host = url.host {
-                http.allHeaderFields.forEach { (k, v) in
-                    if String(describing: k).lowercased() == "set-cookie", let sc = v as? String {
-                        SimpleCookieJar.shared.store(setCookie: sc, host: host)
-                    }
-                }
-            }
-            let reusedCookie = (url.host.flatMap { SimpleCookieJar.shared.cookieHeader(for: $0) }) ?? "(none)"
-
-            var advice = ""
-            if http.statusCode == 403 {
-                advice = "\n⚠️ 403 Forbidden (attempt=\(attempt)): Retried after clearing cookies & preflight. Provide x-token=... y-token=... if required, verify siteaddress/domain, or ensure required business/session cookies are present."
-                if let lastBody = last403Body, !lastBody.isEmpty {
-                    advice += "\n403 Body Snippet: \(lastBody.prefix(400))"
-                }
-            }
-
-            return "🔐 Login Attempt (attempt=\(attempt))\n\(statusLine)\n\(tokenLine)\nCookie Reused: \(reusedCookie)\n\nSummary: \(parsedSummary)\nSite: \(base)\nUser: \(arguments.username)\n\nBody Snippet: \(rawBodySnippet)\nHeaders Count: \(headers.count)\(advice)"
         } catch {
-            throw ToolCallError.networkError
+            return """
+            ❌ Login Failed (Network Error)
+            User: \(arguments.username)
+            Site: \(base)
+            Error: \(error.localizedDescription)
+            """
         }
+    }
+
+    private func userAgentString() -> String { "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148" }
+    private func compactJSONString(_ json: [String: Any]) -> String {
+        if let d = try? JSONSerialization.data(withJSONObject: json, options: [.sortedKeys]), let s = String(data: d, encoding: .utf8) { return s }
+        return "{}"
     }
 }
 
@@ -1483,7 +1455,7 @@ struct ToolCallView: View {
     private func performLogin(naturalInput: String) async throws -> ToolCallResult {
         // Parse natural input for credentials and endpoint
         // Expected variants:
-        //  - login username=.. password=.. site=https://... domain=.. x-token=.. y-token=..
+    //  - login username=.. password=.. site=https://... domain=.. (TestVC style)
         //  - 登录 用户名=.. 密码=.. 站点=..
         func value(for keys: [String], in text: String) -> String? {
             for key in keys {
@@ -1498,9 +1470,7 @@ struct ToolCallView: View {
         var password = value(for: ["password", "pass", "pwd", "密码"], in: naturalInput) ?? ""
         var site = value(for: ["site", "siteaddress", "url", "地址", "站点"], in: naturalInput) ?? ""
         let domain = value(for: ["domain", "域"], in: naturalInput) ?? ""
-    let xToken = value(for: ["x-token", "xtoken"], in: naturalInput)
-    let yToken = value(for: ["y-token", "ytoken"], in: naturalInput)
-        let authTypeStr = value(for: ["authenticationType", "auth", "type"], in: naturalInput) ?? "0"
+    let authTypeStr = value(for: ["authenticationType", "auth", "type"], in: naturalInput) ?? "0"
         let authType = Int(authTypeStr) ?? 0
 
         // Special compact pattern: "user and pwd is <u>,<p>" (spaces optional)
@@ -1537,9 +1507,7 @@ struct ToolCallView: View {
             password: password,
             domain: domain,
             siteaddress: site,
-            authenticationType: authType,
-            xToken: xToken,
-            yToken: yToken
+            authenticationType: authType
         )
         let output = try await LoginTool().call(arguments: args)
 
@@ -1779,6 +1747,29 @@ struct ToolCallView: View {
         s = s.trimmingCharacters(in: .whitespacesAndNewlines)
         return s.isEmpty ? text.trimmingCharacters(in: .whitespacesAndNewlines) : s
     }
+}
+
+// MARK: - Gzip Helper
+private func gunzip(data: Data) -> Data? {
+    guard !data.isEmpty else { return data }
+    // Allocate destination buffer optimistically 4x input size cap 8MB
+    let dstCapacity = min(data.count * 4, 8_388_608)
+    var dst = Data(count: dstCapacity)
+    let decodedSize = dst.withUnsafeMutableBytes { dstPtr -> Int in
+        return data.withUnsafeBytes { srcPtr -> Int in
+            guard let srcBase = srcPtr.baseAddress, let dstBase = dstPtr.baseAddress else { return 0 }
+            let size = compression_decode_buffer(
+                dstBase.assumingMemoryBound(to: UInt8.self), dstCapacity,
+                srcBase.assumingMemoryBound(to: UInt8.self), data.count,
+                nil,
+                COMPRESSION_ZLIB
+            )
+            return size
+        }
+    }
+    guard decodedSize > 0 else { return nil }
+    dst.removeSubrange(decodedSize..<dst.count)
+    return dst
 }
 
 // MARK: - Data Models
@@ -2106,6 +2097,10 @@ struct ShareSheet: UIViewControllerRepresentable {
 
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
+
+// (Removed duplicate legacy LoginTool definition at file tail; consolidated above)
+
+// MARK: - Preview
 
 #Preview {
     NavigationView {
