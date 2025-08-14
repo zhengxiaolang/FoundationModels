@@ -461,6 +461,208 @@ struct ColorPaletteTool: Tool {
     }
 }
 
+// MARK: - Login Tool (Real API Call)
+
+// Enhanced cookie jar (generic multi-cookie) to better mimic browser persistence
+final class SimpleCookieJar {
+    static let shared = SimpleCookieJar()
+    private var storage: [String: [String: String]] = [:] // host -> cookieName -> value
+    private let queue = DispatchQueue(label: "cookie.jar.queue")
+
+    func cookieHeader(for host: String) -> String? {
+        queue.sync {
+            guard let dict = storage[host], !dict.isEmpty else { return nil }
+            return dict.map { "\($0.key)=\($0.value)" }.joined(separator: "; ")
+        }
+    }
+
+    func store(setCookie: String, host: String) {
+        // Take first segment (name=value)
+        guard let first = setCookie.components(separatedBy: ";").first else { return }
+        let kv = first.split(separator: "=", maxSplits: 1).map { String($0) }
+        guard kv.count == 2 else { return }
+        let name = kv[0].trimmingCharacters(in: .whitespaces)
+        let value = kv[1].trimmingCharacters(in: .whitespaces)
+        queue.sync {
+            var dict = storage[host] ?? [:]
+            dict[name] = value
+            storage[host] = dict
+        }
+    }
+
+    func clear(host: String? = nil) {
+        queue.sync {
+            if let h = host { storage.removeValue(forKey: h) } else { storage.removeAll() }
+        }
+    }
+}
+
+struct LoginTool: Tool {
+    let name = "login"
+    let description = "Authenticate to a site by posting credentials to its login API"
+
+    @Generable
+    struct Arguments {
+        @Guide(description: "Username for login") var username: String
+        @Guide(description: "Password for login") var password: String
+        @Guide(description: "Domain, can be empty if not required") var domain: String
+        @Guide(description: "Base site address, e.g. https://aiwin.sogoodsofast.com/SAWS-WebAPI") var siteaddress: String
+        @Guide(description: "Authentication type, default 0") var authenticationType: Int
+    @Guide(description: "Optional x-token header if server expects it (some environments return 403 without it)") var xToken: String?
+    @Guide(description: "Optional y-token header if server expects it") var yToken: String?
+    }
+
+    func call(arguments: Arguments) async throws -> String {
+        // Build URL: {siteaddress}/services/User/Login
+        var base = arguments.siteaddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        if base.hasSuffix("/") { base.removeLast() }
+        guard let url = URL(string: base + "/services/User/Login") else {
+            throw ToolCallError.invalidExpression
+        }
+
+        // Preflight fetch /phone/ to seed cookies if none present
+        if let host = url.host, SimpleCookieJar.shared.cookieHeader(for: host) == nil,
+           let preURL = URL(string: base + "/phone/") {
+            var preReq = URLRequest(url: preURL)
+            preReq.httpMethod = "GET"
+            preReq.setValue(base, forHTTPHeaderField: "Origin")
+            preReq.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36", forHTTPHeaderField: "User-Agent")
+            preReq.setValue("no-cache", forHTTPHeaderField: "Pragma")
+            preReq.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+            do {
+                let (_, preResp) = try await URLSession.shared.data(for: preReq)
+                if let httpPre = preResp as? HTTPURLResponse {
+                    httpPre.allHeaderFields.forEach { k, v in
+                        if String(describing: k).lowercased() == "set-cookie", let sc = v as? String, let host = url.host {
+                            SimpleCookieJar.shared.store(setCookie: sc, host: host)
+                        }
+                    }
+                }
+            } catch { /* ignore preflight errors */ }
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json; charset=UTF-8", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("4", forHTTPHeaderField: "cipplatform")
+        // Emulate Chrome desktop headers (per successful capture)
+        request.setValue("en-US", forHTTPHeaderField: "Accept-Language")
+        request.setValue("no-cache", forHTTPHeaderField: "Pragma")
+        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+        request.setValue("gzip, deflate, br, zstd", forHTTPHeaderField: "Accept-Encoding")
+        request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36", forHTTPHeaderField: "User-Agent")
+        request.setValue(base, forHTTPHeaderField: "Origin")
+        request.setValue(base + "/phone/", forHTTPHeaderField: "Referer")
+        request.setValue("empty", forHTTPHeaderField: "Sec-Fetch-Dest")
+        request.setValue("cors", forHTTPHeaderField: "Sec-Fetch-Mode")
+        request.setValue("same-origin", forHTTPHeaderField: "Sec-Fetch-Site")
+        request.setValue("?0", forHTTPHeaderField: "Sec-CH-UA-Mobile")
+        request.setValue("\"macOS\"", forHTTPHeaderField: "Sec-CH-UA-Platform")
+        request.setValue("\"Not;A=Brand\";v=\"99\", \"Google Chrome\";v=\"139\", \"Chromium\";v=\"139\"", forHTTPHeaderField: "Sec-CH-UA")
+    if let host = url.host, let ck = SimpleCookieJar.shared.cookieHeader(for: host) { request.setValue(ck, forHTTPHeaderField: "Cookie") }
+        // Optional tokens if provided by caller (will not be sent if nil/empty)
+        if let x = arguments.xToken, !x.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            request.setValue(x, forHTTPHeaderField: "x-token")
+        }
+        if let y = arguments.yToken, !y.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            request.setValue(y, forHTTPHeaderField: "y-token")
+        }
+
+        // JSON body
+        let body: [String: Any] = [
+            "username": arguments.username,
+            "password": arguments.password,
+            "domain": arguments.domain,
+            "siteaddress": arguments.siteaddress,
+            "authenticationType": arguments.authenticationType
+        ]
+
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        } catch {
+            throw ToolCallError.invalidExpression
+        }
+
+        do {
+            // Retry mechanism: up to 2 attempts if 403
+            var attempt = 0
+            var data: Data = Data()
+            var response: URLResponse = URLResponse()
+            var http: HTTPURLResponse!
+            var last403Body: String? = nil
+            repeat {
+                attempt += 1
+                (data, response) = try await URLSession.shared.data(for: request)
+                guard let h = response as? HTTPURLResponse else { throw ToolCallError.networkError }
+                http = h
+                if http.statusCode == 403 {
+                    last403Body = String(data: data, encoding: .utf8)
+                    // Clear cookies then preflight again before retry
+                    if attempt == 1, let host = url.host { SimpleCookieJar.shared.clear(host: host) }
+                } else { break }
+            } while http.statusCode == 403 && attempt < 2
+
+            // Default summary and raw body fallback
+            var parsedSummary = ""
+            var rawBodySnippet = ""
+
+            if data.isEmpty {
+                rawBodySnippet = "(empty body)"
+            } else {
+                // Attempt JSON parse first
+                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    var safeJson = json
+                    safeJson.removeValue(forKey: "password")
+                    if let msg = safeJson["message"] as? String { parsedSummary = msg }
+                    else if let success = safeJson["success"] as? Bool { parsedSummary = success ? "Login success" : "Login failed" }
+                    else { parsedSummary = "JSON parsed" }
+                    // Provide compact JSON snippet
+                    if let snippetData = try? JSONSerialization.data(withJSONObject: safeJson, options: [.sortedKeys]),
+                       let snippet = String(data: snippetData, encoding: .utf8) {
+                        rawBodySnippet = String(snippet.prefix(400))
+                    }
+                } else {
+                    // Fallback treat as text
+                    rawBodySnippet = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "(binary body)"
+                    parsedSummary = rawBodySnippet.isEmpty ? "Received non-JSON or empty body" : "Non-JSON body"
+                }
+            }
+
+            // Capture r-token if present
+            let headers = http.allHeaderFields
+            let rToken = headers.first { (key, _) in
+                String(describing: key).lowercased() == "r-token"
+            }?.value as? String
+
+            let statusLine = "HTTP Status: \(http.statusCode)"
+            let tokenLine = rToken != nil ? "r-token: \(rToken!)" : "r-token: (none)"
+
+            // Store any Set-Cookie(s)
+            if let host = url.host {
+                http.allHeaderFields.forEach { (k, v) in
+                    if String(describing: k).lowercased() == "set-cookie", let sc = v as? String {
+                        SimpleCookieJar.shared.store(setCookie: sc, host: host)
+                    }
+                }
+            }
+            let reusedCookie = (url.host.flatMap { SimpleCookieJar.shared.cookieHeader(for: $0) }) ?? "(none)"
+
+            var advice = ""
+            if http.statusCode == 403 {
+                advice = "\n⚠️ 403 Forbidden (attempt=\(attempt)): Retried after clearing cookies & preflight. Provide x-token=... y-token=... if required, verify siteaddress/domain, or ensure required business/session cookies are present."
+                if let lastBody = last403Body, !lastBody.isEmpty {
+                    advice += "\n403 Body Snippet: \(lastBody.prefix(400))"
+                }
+            }
+
+            return "🔐 Login Attempt (attempt=\(attempt))\n\(statusLine)\n\(tokenLine)\nCookie Reused: \(reusedCookie)\n\nSummary: \(parsedSummary)\nSite: \(base)\nUser: \(arguments.username)\n\nBody Snippet: \(rawBodySnippet)\nHeaders Count: \(headers.count)\(advice)"
+        } catch {
+            throw ToolCallError.networkError
+        }
+    }
+}
+
 // MARK: - Error Types
 
 enum CalculationError: Error, LocalizedError {
@@ -513,6 +715,7 @@ struct ToolCallView: View {
     private var quickSelectionData: [String] {
         return [
             "What's the weather in Beijing?",
+            "loginuser and pwd is superadmin,0115, check for login result.",
             "Calculate 25 * 4 + 10",
             "Translate 'Hello world' to Chinese",
             "Search for Swift programming tutorials",
@@ -668,6 +871,7 @@ struct ToolCallView: View {
             .animation(.easeInOut(duration: 0.2), value: isInputFocused)
 
             VStack(alignment: .leading, spacing: 8) {
+                let currentTool = suggestedTool ?? selectedTool
                 TextField("Ask me anything! e.g., 'What's the weather in Tokyo?' or 'Calculate 15 * 8'", text: $inputText, axis: .vertical)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
                     .lineLimit(3...6)
@@ -679,7 +883,6 @@ struct ToolCallView: View {
                     }
 
                 // Current tool display
-                let currentTool = suggestedTool ?? selectedTool
                 HStack {
                     Image(systemName: currentTool.icon)
                         .foregroundColor(currentTool.color)
@@ -827,10 +1030,13 @@ struct ToolCallView: View {
                         .progressViewStyle(CircularProgressViewStyle(tint: .white))
                         .scaleEffect(0.8)
                 } else {
-                    Image(systemName: selectedTool.icon)
+                    let currentTool = suggestedTool ?? selectedTool
+                    Image(systemName: currentTool.icon)
                 }
 
-                Text(isProcessing ? "Processing..." : "Ask AI Assistant")
+                let currentTool = suggestedTool ?? selectedTool
+                let labelText = isProcessing ? "Processing..." : (currentTool == .login ? "Login" : "Ask AI Assistant")
+                Text(labelText)
                     .font(.headline)
             }
             .foregroundColor(.white)
@@ -845,8 +1051,8 @@ struct ToolCallView: View {
             )
             .cornerRadius(16)
         }
-        .disabled(isProcessing || inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-        .opacity(isProcessing || inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.6 : 1.0)
+    .disabled(isProcessing || inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    .opacity(isProcessing || inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.6 : 1.0)
     }
 
     private var resultsSection: some View {
@@ -901,13 +1107,17 @@ struct ToolCallView: View {
         let searchKeywords = ["search", "搜索", "find", "查找", "lookup", "look up", "google", "百度", "information", "信息", "about", "关于"]
         scores[.search] = countKeywords(in: lowercaseInput, keywords: searchKeywords)
 
-        // 二维码相关关键词
+    // 二维码相关关键词
         let qrKeywords = ["qr", "二维码", "qr code", "barcode", "条码", "generate", "生成", "code", "码", "scan", "扫描"]
         scores[.qrGenerator] = countKeywords(in: lowercaseInput, keywords: qrKeywords)
 
         // 颜色相关关键词
         let colorKeywords = ["color", "颜色", "palette", "调色板", "theme", "主题", "design", "设计", "rgb", "hex", "paint", "绘画"]
         scores[.colorPalette] = countKeywords(in: lowercaseInput, keywords: colorKeywords)
+
+    // 登录相关关键词（支持仅提到用户名/密码也能触发）
+    let loginKeywords = ["login", "signin", "sign in", "登录", "登陆", "认证", "账号", "密码", "pwd", "password", "username"]
+    scores[.login] = countKeywords(in: lowercaseInput, keywords: loginKeywords)
 
         // 特殊模式检测
         if containsNumbers(lowercaseInput) && containsMathOperators(lowercaseInput) {
@@ -939,6 +1149,11 @@ struct ToolCallView: View {
 
         if containsCityNames(lowercaseInput) {
             scores[.weather] = (scores[.weather] ?? 0) + 3
+        }
+
+        // 额外：紧凑凭据短语直接加权（"user and pwd is u,p"）
+        if lowercaseInput.range(of: #"(?i)user\s*and\s*pwd\s*is\s*[^,\s]+\s*,\s*[^,\s]+"#, options: .regularExpression) != nil {
+            scores[.login] = (scores[.login] ?? 0) + 5
         }
 
         // 找到得分最高的工具
@@ -1007,12 +1222,16 @@ struct ToolCallView: View {
 
         isProcessing = true
 
-        Task {
+    Task {
             do {
-                // If QR tool is selected, call it directly to ensure QR renders
+        // If QR tool is selected, call it directly to ensure QR renders
                 let result: ToolCallResult
-                if selectedTool == .qrGenerator {
+        let currentTool = suggestedTool ?? selectedTool
+        if currentTool == .qrGenerator {
                     result = try await performToolCall(tool: .qrGenerator, input: inputText)
+        } else if currentTool == .login {
+            // Use natural language from input box to parse credentials and login
+            result = try await performLogin(naturalInput: inputText)
                 } else {
                     // Use natural language interaction with Apple Intelligence
                     result = try await performNaturalLanguageToolCall(input: inputText)
@@ -1039,7 +1258,7 @@ struct ToolCallView: View {
     private func performNaturalLanguageToolCall(input: String) async throws -> ToolCallResult {
         // Create a session with all real API tools following official demo pattern
         let session = LanguageModelSession(
-            tools: [WeatherTool(), CalculatorTool(), TranslatorTool(), SearchTool(), QRGeneratorTool(), ColorPaletteTool()],
+            tools: [WeatherTool(), CalculatorTool(), TranslatorTool(), SearchTool(), QRGeneratorTool(), ColorPaletteTool(), LoginTool()],
             instructions: "Help the person with weather information, calculations, translations, internet searches, QR code generation, and color palette creation using real APIs"
         )
 
@@ -1096,6 +1315,8 @@ struct ToolCallView: View {
         else if lowercaseInput.contains("color") || lowercaseInput.contains("palette") || lowercaseInput.contains("theme") ||
                     input.contains("颜色") || input.contains("调色板") || input.contains("主题") {
             return .colorPalette
+        } else if lowercaseInput.contains("login") || input.contains("登录") || input.contains("登陆") || input.contains("账号") {
+            return .login
         } else {
             return selectedTool // fallback to selected tool
         }
@@ -1116,6 +1337,8 @@ struct ToolCallView: View {
             return try await generateQRCode(text: input)
         case .colorPalette:
             return try await generateColorPalette(description: input)
+        case .login:
+            return try await performLogin(naturalInput: input)
         }
     }
 
@@ -1253,6 +1476,83 @@ struct ToolCallView: View {
             metadata: [
                 "theme": description,
                 "source": "Colormind.io API (Real Color Generation)"
+            ]
+        )
+    }
+
+    private func performLogin(naturalInput: String) async throws -> ToolCallResult {
+        // Parse natural input for credentials and endpoint
+        // Expected variants:
+        //  - login username=.. password=.. site=https://... domain=.. x-token=.. y-token=..
+        //  - 登录 用户名=.. 密码=.. 站点=..
+        func value(for keys: [String], in text: String) -> String? {
+            for key in keys {
+                // key=value or key: value
+                let pattern = "(?i)" + NSRegularExpression.escapedPattern(for: key) + #"\s*(?:[:=]|\bis\b)\s*([^,\s]+)"#
+                if let v = firstMatch(in: text, pattern: pattern, options: [.caseInsensitive]) { return v }
+            }
+            return nil
+        }
+
+        var username = value(for: ["username", "user", "账号", "用户名"], in: naturalInput) ?? ""
+        var password = value(for: ["password", "pass", "pwd", "密码"], in: naturalInput) ?? ""
+        var site = value(for: ["site", "siteaddress", "url", "地址", "站点"], in: naturalInput) ?? ""
+        let domain = value(for: ["domain", "域"], in: naturalInput) ?? ""
+    let xToken = value(for: ["x-token", "xtoken"], in: naturalInput)
+    let yToken = value(for: ["y-token", "ytoken"], in: naturalInput)
+        let authTypeStr = value(for: ["authenticationType", "auth", "type"], in: naturalInput) ?? "0"
+        let authType = Int(authTypeStr) ?? 0
+
+        // Special compact pattern: "user and pwd is <u>,<p>" (spaces optional)
+    if (username.isEmpty || password.isEmpty) {
+            let compactPattern = #"(?i)user\s*and\s*pwd\s*is\s*([^,\s]+)\s*,\s*([^,\s]+)"#
+            if let u = firstMatch(in: naturalInput, pattern: compactPattern, options: [.caseInsensitive], group: 1),
+               let p = firstMatch(in: naturalInput, pattern: compactPattern, options: [.caseInsensitive], group: 2) {
+        // Always trust the compact pattern extraction; overwrite password to fix issue where password captured only first segment before comma
+        if username.isEmpty { username = u }
+        password = p
+            }
+        }
+
+        // Fallback singular phrases like "user is X", "pwd is Y"
+        if username.isEmpty {
+            username = firstMatch(in: naturalInput, pattern: #"(?i)\buser(?:name)?\b\s*(?:[:=]|is)\s*([^,\s]+)"#, options: [.caseInsensitive]) ?? username
+        }
+        if password.isEmpty {
+            password = firstMatch(in: naturalInput, pattern: #"(?i)\b(?:password|pass|pwd)\b\s*(?:[:=]|is)\s*([^,\s]+)"#, options: [.caseInsensitive]) ?? password
+        }
+
+        // Provide a default site if missing so users can just input account/password
+        if site.isEmpty {
+            site = "https://aiwin.sogoodsofast.com/SAWS-WebAPI"
+        }
+
+        guard !username.isEmpty, !password.isEmpty, !site.isEmpty else {
+            throw ToolCallError.invalidExpression
+        }
+
+        // Execute LoginTool directly with parsed arguments for deterministic call
+        let args = LoginTool.Arguments(
+            username: username,
+            password: password,
+            domain: domain,
+            siteaddress: site,
+            authenticationType: authType,
+            xToken: xToken,
+            yToken: yToken
+        )
+        let output = try await LoginTool().call(arguments: args)
+
+        return ToolCallResult(
+            tool: .login,
+            input: "site=\(site) user=\(username)",
+            output: output,
+            success: true,
+            metadata: [
+                "site": site,
+                "user": username,
+                "domain": domain,
+                "authType": String(authType)
             ]
         )
     }
@@ -1490,6 +1790,7 @@ enum ToolType: CaseIterable {
     case search
     case qrGenerator
     case colorPalette
+    case login
 
     var displayName: String {
         switch self {
@@ -1499,6 +1800,7 @@ enum ToolType: CaseIterable {
         case .search: return "Search"
         case .qrGenerator: return "QR Generator"
         case .colorPalette: return "Color Palette"
+    case .login: return "Login"
         }
     }
 
@@ -1510,6 +1812,7 @@ enum ToolType: CaseIterable {
         case .search: return "Internet search"
         case .qrGenerator: return "Generate QR codes"
         case .colorPalette: return "Generate theme colors"
+    case .login: return "Authenticate to a site via API"
         }
     }
 
@@ -1521,6 +1824,7 @@ enum ToolType: CaseIterable {
         case .search: return "magnifyingglass"
         case .qrGenerator: return "qrcode"
         case .colorPalette: return "paintbrush"
+    case .login: return "lock"
         }
     }
 
@@ -1532,6 +1836,8 @@ enum ToolType: CaseIterable {
         case .search: return .purple
         case .qrGenerator: return .red
         case .colorPalette: return .pink
+        // Updated to a more visually appealing accent color instead of gray
+    case .login: return .teal
         }
     }
 
@@ -1543,6 +1849,7 @@ enum ToolType: CaseIterable {
         case .search: return "Enter search keywords"
         case .qrGenerator: return "Enter text to generate QR code"
         case .colorPalette: return "Describe color theme, e.g.: Spring"
+    case .login: return "login username=... password=... site=https://..."
         }
     }
 
@@ -1554,6 +1861,7 @@ enum ToolType: CaseIterable {
     case .search: return "Searches via Wikipedia, GitHub and HTTPBin"
         case .qrGenerator: return "Supports text, links and other content"
         case .colorPalette: return "Generate color schemes based on description"
+    case .login: return "POSTs credentials to /services/User/Login; returns status and r-token header"
         }
     }
 }
