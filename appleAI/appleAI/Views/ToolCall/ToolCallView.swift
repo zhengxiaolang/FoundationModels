@@ -501,14 +501,23 @@ final class SimpleCookieJar {
 
 struct LoginTool: Tool {
     let name = "login"
-    let description = "Authenticate (TestVC style) via GET /phone/ cookie + POST /services/User/Login"
-
+    let description = 
+    """
+        Login with a username & password (optional: site, domain, authenticationType).
+        Supported examples:
+            • username=superadmin password=0115
+            • login with username superadmin and password 0115
+            • use superadmin / 0115 to log in
+            • user and pwd is superadmin,0115
+            • user superadmin password 0115
+        Default site is used if none provided.
+    """
     @Generable
     struct Arguments {
         @Guide(description: "Username for login") var username: String
         @Guide(description: "Password for login") var password: String
         @Guide(description: "Domain (can be empty)") var domain: String
-        @Guide(description: "Base site address, e.g. https://aiwin.sogoodsofast.com/SAWS-WebAPI") var siteaddress: String
+        @Guide(description: "Base site address, e.g. https://cipweb-test-dev.sogoodsofast.com/Offline_API") var siteaddress: String
         @Guide(description: "Authentication type (default 0)") var authenticationType: Int
     }
 
@@ -622,12 +631,6 @@ struct LoginTool: Tool {
                         User: \(arguments.username)
                         HTTP: \(http.statusCode)
                         Body Snippet: \(jsonSummary.prefix(800))
-                        Hints:
-                            • 确认 BaseApiUrl 是否正确 (应以 /SAWS-WebAPI 结束)
-                            • 确认路径包含 /services/User/Login
-                            • 检查 authenticationType 与 domain 是否匹配
-                            • 若仍 403/404，可尝试切换到 /User/Login 以兼容不同版本
-                            • 确认 y-token 计算是否一致 (body/URL/大小写/重复解码)
                         """
         }
     }
@@ -783,7 +786,9 @@ struct ToolCallView: View {
     private var quickSelectionData: [String] {
         return [
             "What's the weather in Beijing?",
-            "loginuser and pwd is superadmin,0115, check for login result.",
+            "Login with username superadmin and password 0115, then check the result.",
+            "Use superadmin / 0000 to log in and verify the result.",
+            "账号跟密码分别为superadmin/0115, 登录下",
             "Calculate 25 * 4 + 10",
             "Translate 'Hello world' to Chinese",
             "Search for Swift programming tutorials",
@@ -1184,7 +1189,7 @@ struct ToolCallView: View {
         scores[.colorPalette] = countKeywords(in: lowercaseInput, keywords: colorKeywords)
 
     // 登录相关关键词（支持仅提到用户名/密码也能触发）
-    let loginKeywords = ["login", "signin", "sign in", "登录", "登陆", "认证", "账号", "密码", "pwd", "password", "username"]
+    let loginKeywords = ["login", "log in", "signin", "sign in", "登录", "登陆", "认证", "账号", "密码", "pwd", "password", "username"]
     scores[.login] = countKeywords(in: lowercaseInput, keywords: loginKeywords)
 
         // 特殊模式检测
@@ -1222,6 +1227,27 @@ struct ToolCallView: View {
         // 额外：紧凑凭据短语直接加权（"user and pwd is u,p"）
         if lowercaseInput.range(of: #"(?i)user\s*and\s*pwd\s*is\s*[^,\s]+\s*,\s*[^,\s]+"#, options: .regularExpression) != nil {
             scores[.login] = (scores[.login] ?? 0) + 5
+        }
+
+        // 新增：匹配 "login with username superadmin and password 0115" 这种无等号形式
+        if lowercaseInput.range(of: #"(?i)login\s+with\s+username\s+[^,\s/]+\s+and\s+password\s+[^,\s/]+"#, options: .regularExpression) != nil {
+            scores[.login] = (scores[.login] ?? 0) + 8
+        }
+
+        // Slash 凭据形式 "superadmin / 0115" (前面可能有 use / login words)
+        if lowercaseInput.range(of: #"(?i)(?:use|login|log in)?\s*[^,\s/]+\s*/\s*[^,\s/]+"#, options: .regularExpression) != nil && lowercaseInput.contains("/") {
+            scores[.login] = (scores[.login] ?? 0) + 7
+        }
+
+        // 中文复合形式：账号跟密码分别为 / 账号和密码分别是 / 用户名和密码分别为 等
+        if lowercaseInput.range(of: #"(账号|帐号|帐户|用户名|用户)[和跟及]?(密码|口令)分别?(为|是)[^a-z0-9]*[^,，/\s]+[/／、\s]+[^,，/\s]+"#, options: .regularExpression) != nil {
+            scores[.login] = (scores[.login] ?? 0) + 8
+        }
+
+        // 如果包含 password 或 pwd 但没有典型数学运算符，则削弱 calculator 分数（避免把 0000 当算式）
+        if (lowercaseInput.contains("password") || lowercaseInput.contains("pwd") || lowercaseInput.contains("用户名") || lowercaseInput.contains("密码")) &&
+            !(lowercaseInput.contains("+") || lowercaseInput.contains("-") || lowercaseInput.contains("*") || lowercaseInput.contains("×") || lowercaseInput.contains("÷") || lowercaseInput.contains("/ ")) {
+            if let calc = scores[.calculator], calc > 0 { scores[.calculator] = max(0, calc - 2) }
         }
 
         // 找到得分最高的工具
@@ -1549,51 +1575,15 @@ struct ToolCallView: View {
     }
 
     private func performLogin(naturalInput: String) async throws -> ToolCallResult {
-        // Parse natural input for credentials and endpoint
-        // Expected variants:
-    //  - login username=.. password=.. site=https://... domain=.. (TestVC style)
-        //  - 登录 用户名=.. 密码=.. 站点=..
-        func value(for keys: [String], in text: String) -> String? {
-            for key in keys {
-                // key=value or key: value
-                let pattern = "(?i)" + NSRegularExpression.escapedPattern(for: key) + #"\s*(?:[:=]|\bis\b)\s*([^,\s]+)"#
-                if let v = firstMatch(in: text, pattern: pattern, options: [.caseInsensitive]) { return v }
-            }
-            return nil
-        }
+    let parsed = extractCredentialsAndContext(from: naturalInput)
+    var username = parsed.username
+    var password = parsed.password
+    var site = parsed.site
+    let domain = parsed.domain
+    let authType = parsed.authType
 
-        var username = value(for: ["username", "user", "账号", "用户名"], in: naturalInput) ?? ""
-        var password = value(for: ["password", "pass", "pwd", "密码"], in: naturalInput) ?? ""
-        var site = value(for: ["site", "siteaddress", "url", "地址", "站点"], in: naturalInput) ?? ""
-        let domain = value(for: ["domain", "域"], in: naturalInput) ?? ""
-    let authTypeStr = value(for: ["authenticationType", "auth", "type"], in: naturalInput) ?? "0"
-        let authType = Int(authTypeStr) ?? 0
-
-        // Special compact pattern: "user and pwd is <u>,<p>" (spaces optional)
-    if (username.isEmpty || password.isEmpty) {
-            let compactPattern = #"(?i)user\s*and\s*pwd\s*is\s*([^,\s]+)\s*,\s*([^,\s]+)"#
-            if let u = firstMatch(in: naturalInput, pattern: compactPattern, options: [.caseInsensitive], group: 1),
-               let p = firstMatch(in: naturalInput, pattern: compactPattern, options: [.caseInsensitive], group: 2) {
-        // Always trust the compact pattern extraction; overwrite password to fix issue where password captured only first segment before comma
-        if username.isEmpty { username = u }
-        password = p
-            }
-        }
-
-        // Fallback singular phrases like "user is X", "pwd is Y"
-        if username.isEmpty {
-            username = firstMatch(in: naturalInput, pattern: #"(?i)\buser(?:name)?\b\s*(?:[:=]|is)\s*([^,\s]+)"#, options: [.caseInsensitive]) ?? username
-        }
-        if password.isEmpty {
-            password = firstMatch(in: naturalInput, pattern: #"(?i)\b(?:password|pass|pwd)\b\s*(?:[:=]|is)\s*([^,\s]+)"#, options: [.caseInsensitive]) ?? password
-        }
-
-        // Provide a default site if missing so users can just input account/password
-        if site.isEmpty {
-            // Default updated to internal service base; full login URL becomes http://192.168.40.159:8866/services/User/Login
-            site = "https://cipweb-test-dev.sogoodsofast.com/Offline_API"
-            //site = "http://192.168.40.159:8866"
-        }
+    // Provide default site if still empty
+    if site.isEmpty { site = "https://cipweb-test-dev.sogoodsofast.com/Offline_API" }
 
         guard !username.isEmpty, !password.isEmpty, !site.isEmpty else {
             throw ToolCallError.invalidExpression
@@ -1621,6 +1611,81 @@ struct ToolCallView: View {
                 "authType": String(authType)
             ]
         )
+    }
+
+    // Universal multi-language credential extraction (English + Chinese + generic patterns)
+    private func extractCredentialsAndContext(from text: String) -> (username: String, password: String, site: String, domain: String, authType: Int) {
+        let input = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lower = input.lowercased()
+        var username = ""
+        var password = ""
+        var site = ""
+        var domain = ""
+        var authType: Int = 0
+
+        // 1. Combined patterns (multi-language)
+        let combinedPatterns: [(String, Int, Int)] = [
+            // Chinese: 账号跟密码分别为 user/pass
+            (#"(账号|帐号|帐户|用户名|用户)[和跟及]?(密码|口令)分别?(?:为|是)\s*([^/／、\s,，]+)[/／、\s]+([^/／、\s,，]+)"#, 3, 4),
+            // Chinese: 账号 user 密码 pass
+            (#"(账号|帐号|帐户|用户名|用户)[:：=]?\s*([^,，/／\s]+)[,，\s]+(密码|口令)[:：=]?\s*([^,，/／\s]+)"#, 2, 4),
+            // English: username superadmin password 0115
+            (#"(?i)\buser(?:name)?\b\s+([^,\s/]+)\s+pass(?:word)?\b\s+([^,\s/]+)"#, 1, 2),
+            // Slash form first: superadmin / 0115
+            (#"(?i)\b([^,\s/]+)\s*/\s*([^,\s/]+)\b"#, 1, 2)
+        ]
+        for (pat, uGroup, pGroup) in combinedPatterns {
+            if let regex = try? NSRegularExpression(pattern: pat, options: []), let m = regex.firstMatch(in: input, options: [], range: NSRange(location: 0, length: input.utf16.count)) {
+                if username.isEmpty, let u = input.substring(with: m.range(at: uGroup)) { username = u }
+                if password.isEmpty, let p = input.substring(with: m.range(at: pGroup)) { password = p }
+                if !username.isEmpty && !password.isEmpty { break }
+            }
+        }
+
+        // 2. Key-value style tokens split by space/comma
+        // Normalize separators
+        let separators = CharacterSet(charactersIn: " ,;\n\t")
+        let tokens = input.split(whereSeparator: { separators.contains($0.unicodeScalars.first!) })
+        for raw in tokens {
+            let t = String(raw)
+            // patterns like key=value or key:val
+            if t.contains("=") || t.contains(":") || t.contains("：") {
+                let parts = t.replacingOccurrences(of: "：", with: ":").split(whereSeparator: { $0 == "=" || $0 == ":" })
+                if parts.count == 2 {
+                    let k = parts[0].lowercased()
+                    let v = String(parts[1])
+                    if username.isEmpty && ["user","username","账号","帐号","帐户","用户名"].contains(where: { k.contains($0) }) { username = v }
+                    else if password.isEmpty && ["password","pass","pwd","密码","口令"].contains(where: { k.contains($0) }) { password = v }
+                    else if site.isEmpty && ["site","siteaddress","url","地址","站点"].contains(where: { k.contains($0) }) { site = v }
+                    else if domain.isEmpty && ["domain","域"].contains(where: { k.contains($0) }) { domain = v }
+                    else if k.contains("auth") || k.contains("type") { authType = Int(v) ?? authType }
+                }
+            }
+        }
+
+        // 3. English/Chinese loose patterns (user is X, 密码是 Y)
+        if username.isEmpty { username = firstMatch(in: input, pattern: #"(?i)user(?:name)?\s*(?:=|:|：|is)?\s*([^,\s/]+)"#, options: []) ?? username }
+        if password.isEmpty { password = firstMatch(in: input, pattern: #"(?i)(?:password|pass|pwd|密码|口令)\s*(?:=|:|：|是|为|is)?\s*([^,\s/]+)"#, options: []) ?? password }
+
+        // 4. Compact English (user and pwd is u,p)
+        if (username.isEmpty || password.isEmpty) {
+            if let u = firstMatch(in: input, pattern: #"(?i)user\s*and\s*pwd\s*is\s*([^,\s]+)\s*,\s*([^,\s]+)"#, options: [], group: 1),
+               let p = firstMatch(in: input, pattern: #"(?i)user\s*and\s*pwd\s*is\s*([^,\s]+)\s*,\s*([^,\s]+)"#, options: [], group: 2) {
+                if username.isEmpty { username = u }
+                if password.isEmpty { password = p }
+            }
+        }
+
+        // 5. If still missing try last resort: find two short tokens after any login keyword separated by / space
+        if (username.isEmpty || password.isEmpty) && lower.contains("login") || text.contains("登录") {
+            if let m = firstMatch(in: input, pattern: #"(?i)login[^a-z0-9]+([A-Za-z0-9_@.]+)[/\s]+([A-Za-z0-9_@.]+)"#, options: [], group: 1),
+               let p = firstMatch(in: input, pattern: #"(?i)login[^a-z0-9]+([A-Za-z0-9_@.]+)[/\s]+([A-Za-z0-9_@.]+)"#, options: [], group: 2) {
+                if username.isEmpty { username = m }
+                if password.isEmpty { password = p }
+            }
+        }
+
+        return (username, password, site, domain, authType)
     }
 
     // MARK: - Helper Methods
