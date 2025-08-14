@@ -223,7 +223,7 @@ struct TranslatorTool: Tool {
 
 struct SearchTool: Tool {
     let name = "search"
-    let description = "Search for information on the internet"
+    let description = "Multi-language internet search (English / 中文 / 日本語 / 한국어). 输入或输入例如: 搜索泰国, search Swift, 查找 Apple. Returns summary + top GitHub repos + echo."
 
     @Generable
     struct Arguments {
@@ -232,60 +232,120 @@ struct SearchTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> String {
-        // Real APIs: Wikipedia REST, GitHub Search, HTTPBin echo
-        let query = arguments.query.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Normalize query: remove leading trigger words (multi-language) and trim
+        let raw = arguments.query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else { throw ToolCallError.invalidExpression }
+        let query = normalizeQuery(raw)
         guard !query.isEmpty else { throw ToolCallError.invalidExpression }
 
-        async let wiki = fetchWikipediaSummary(for: query)
-        async let github = fetchGitHubRepositories(for: query)
-        async let httpbin = fetchHTTPBinEcho(for: query)
+        // Run subtasks with timeout to avoid hanging UI (each 4s)
+        async let wiki = withTimeout(seconds: 4) { await fetchWikipediaSummary(for: query) }
+        async let github = withTimeout(seconds: 4) { await fetchGitHubRepositories(for: query) }
+        async let httpbin = withTimeout(seconds: 3) { await fetchHTTPBinEcho(for: query) }
 
-        let (wikiRes, ghRes, echoRes) = await (wiki, github, httpbin)
+        let (wikiResOpt, ghResOpt, echoResOpt) = await (wiki, github, httpbin)
+        let wikiRes = wikiResOpt ?? "❓ Wikipedia: No article found or timeout."
+        let ghRes = ghResOpt ?? "⚙️ GitHub: No repositories or timeout."
+        let echoRes = echoResOpt ?? "🛰️ HTTPBin: Timeout."
 
-        var sections: [String] = []
-        if let wikiRes { sections.append(wikiRes) }
-        if let ghRes { sections.append(ghRes) }
-        if let echoRes { sections.append(echoRes) }
-
-        guard !sections.isEmpty else {
-            throw ToolCallError.serviceUnavailable
-        }
-
-        let header = "🔍 Search Results for: \(query)\n"
-        let footer = "\n🔧 Sources: Wikipedia REST API, GitHub Search API, HTTPBin (all real calls)"
-        return ([header] + sections + [footer]).joined(separator: "\n\n")
+        let header = "🔍 Search Results for: \(query)"
+        let footer = "\n🔧 Sources: Wikipedia (lang auto), GitHub, HTTPBin"
+        return ([header, wikiRes, ghRes, echoRes, footer]).joined(separator: "\n\n")
     }
 
     // MARK: - Wikipedia
     private func fetchWikipediaSummary(for query: String) async -> String? {
-        guard let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
-              let url = URL(string: "https://en.wikipedia.org/api/rest_v1/page/summary/\(encoded)") else { return nil }
+        // Decide language by detecting CJK / Hangul / Latin
+        let lang = detectWikiLanguage(query)
+        // First try direct summary (exact title)
+        if let direct = await wikipediaSummary(lang: lang, title: query) { return direct }
+        // Fallback: search API then summary of first result
+        if let firstTitle = await wikipediaFirstSearchResult(lang: lang, query: query) {
+            if let sum = await wikipediaSummary(lang: lang, title: firstTitle) { return sum }
+        }
+        return nil
+    }
 
+    private func detectWikiLanguage(_ text: String) -> String {
+        // Simple heuristics
+        if text.range(of: #"[\u4e00-\u9fa5]"#, options: .regularExpression) != nil { return "zh" }
+        if text.range(of: #"[\u3040-\u30ff]"#, options: .regularExpression) != nil { return "ja" }
+        if text.range(of: #"[\uac00-\ud7af]"#, options: .regularExpression) != nil { return "ko" }
+        return "en"
+    }
+
+    private func wikipediaSummary(lang: String, title: String) async -> String? {
+        guard let encoded = title.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+              let url = URL(string: "https://\(lang).wikipedia.org/api/rest_v1/page/summary/\(encoded)") else { return nil }
         var request = URLRequest(url: url)
-        request.setValue("appleAI/1.0 (https://example.com)", forHTTPHeaderField: "User-Agent")
-
+        request.setValue("appleAI/1.0", forHTTPHeaderField: "User-Agent")
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else { return nil }
-
-            let decoder = JSONDecoder()
-            decoder.keyDecodingStrategy = .convertFromSnakeCase
-            struct WikiSummary: Decodable {
-                let title: String?
-                let extract: String?
-                let contentUrls: ContentUrls?
-                struct ContentUrls: Decodable { let desktop: Desktop?; struct Desktop: Decodable { let page: String? } }
-            }
-            if let summary = try? decoder.decode(WikiSummary.self, from: data) {
-                let title = summary.title ?? query
-                let extract = (summary.extract?.isEmpty == false ? summary.extract! : "No summary available.")
-                let pageURL = summary.contentUrls?.desktop?.page
-                var text = "� Wikipedia: \(title)\n\n\(extract)"
+            struct Summary: Decodable { let title: String?; let extract: String?; let contentUrls: ContentUrls?; struct ContentUrls: Decodable { let desktop: Desktop?; struct Desktop: Decodable { let page: String? } } }
+            if let s = try? JSONDecoder().decode(Summary.self, from: data) {
+                let titleOut = s.title ?? title
+                let extract = (s.extract?.isEmpty == false ? s.extract! : "No summary available.")
+                let pageURL = s.contentUrls?.desktop?.page
+                var text = "📘 Wikipedia(\(lang)): \(titleOut)\n\n\(extract)"
                 if let pageURL { text += "\n🔗 \(pageURL)" }
                 return text
             }
-        } catch { /* ignore, return nil */ }
+        } catch { return nil }
         return nil
+    }
+
+    private func wikipediaFirstSearchResult(lang: String, query: String) async -> String? {
+        guard var components = URLComponents(string: "https://\(lang).wikipedia.org/w/api.php") else { return nil }
+        components.queryItems = [
+            URLQueryItem(name: "action", value: "query"),
+            URLQueryItem(name: "list", value: "search"),
+            URLQueryItem(name: "srsearch", value: query),
+            URLQueryItem(name: "format", value: "json"),
+            URLQueryItem(name: "srlimit", value: "1")
+        ]
+        guard let url = components.url else { return nil }
+        do {
+            let (data, response) = try await URLSession.shared.data(from: url)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else { return nil }
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let queryObj = json["query"] as? [String: Any],
+               let searchArr = queryObj["search"] as? [[String: Any]],
+               let first = searchArr.first, let title = first["title"] as? String { return title }
+        } catch { return nil }
+        return nil
+    }
+
+    private func normalizeQuery(_ raw: String) -> String {
+        var q = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let prefixes = [
+            "search", "search for", "find", "lookup", "look up", "query",
+            "搜索", "搜一下", "搜下", "查找", "查询", "查一下", "查下"
+        ]
+        let lower = q.lowercased()
+        for p in prefixes.sorted { $0.count > $1.count } { // longer first
+            if lower.hasPrefix(p) {
+                let dropCount = q.index(q.startIndex, offsetBy: p.count)
+                q = String(q[dropCount...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                break
+            }
+        }
+        // Remove leading punctuation like 的/是 for Chinese if accidentally left
+        while let first = q.first, "的是:：-，,。".contains(first) { q.removeFirst() }
+        return q.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    // Generic timeout helper
+    private func withTimeout<T>(seconds: Double, operation: @escaping () async -> T?) async -> T? {
+        return await withTaskGroup(of: T?.self) { group in
+            group.addTask { await operation() }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                return nil
+            }
+            for await result in group { if let result { return result } }
+            return nil
+        }
     }
 
     // MARK: - GitHub
@@ -1181,7 +1241,7 @@ struct ToolCallView: View {
         scores[.search] = countKeywords(in: lowercaseInput, keywords: searchKeywords)
 
     // 二维码相关关键词
-        let qrKeywords = ["qr", "二维码", "qr code", "barcode", "条码", "generate", "生成", "code", "码", "scan", "扫描"]
+    let qrKeywords = ["qr", "二维码", "qr code", "barcode", "条码", "扫码", "scan", "扫描"] // removed generic generate/生成/code
         scores[.qrGenerator] = countKeywords(in: lowercaseInput, keywords: qrKeywords)
 
         // 颜色相关关键词
@@ -1198,7 +1258,8 @@ struct ToolCallView: View {
         }
         
         // 百分比表达式检测
-        if lowercaseInput.contains("%") && lowercaseInput.contains("of") {
+        if (lowercaseInput.contains("%") && lowercaseInput.contains("of")) ||
+            lowercaseInput.range(of: #"\d+%\s*的\s*\d+"#, options: .regularExpression) != nil {
             scores[.calculator] = (scores[.calculator] ?? 0) + 10  // 高优先级
         }
         
@@ -1377,6 +1438,20 @@ struct ToolCallView: View {
     private func determineToolType(from input: String) -> ToolType {
         let lowercaseInput = input.lowercased()
 
+        // High-priority explicit math / percentage pattern detection (avoid misclassification)
+        let percentagePattern = #"(?i)\b\d+(?:\.\d+)?\s*%\s*of\s*\d+(?:\.\d+)?\b"#
+        // Chinese style: 15%的200  or  15% 的 200
+        let zhPercentagePattern = #"(?i)\b\d+(?:\.\d+)?\s*%\s*的\s*\d+(?:\.\d+)?\b"#
+        let simpleMathPatterns = [
+            #"(?i)\b\d+\s*[+\-*/×÷]\s*\d+\b"#,
+            #"(?i)\b\d+(?:\.\d+)?\s*(plus|minus|times|multiplied by|divided by|over)\s*\d+(?:\.\d+)?\b"#
+        ]
+        if lowercaseInput.range(of: percentagePattern, options: .regularExpression) != nil ||
+            lowercaseInput.range(of: zhPercentagePattern, options: .regularExpression) != nil ||
+            simpleMathPatterns.contains(where: { lowercaseInput.range(of: $0, options: .regularExpression) != nil }) {
+            return .calculator
+        }
+
         // Weather
         if lowercaseInput.contains("weather") || lowercaseInput.contains("temperature") || lowercaseInput.contains("forecast") ||
             input.contains("天气") || input.contains("温度") || input.contains("预报") {
@@ -1386,6 +1461,7 @@ struct ToolCallView: View {
         else if lowercaseInput.contains("calculate") || lowercaseInput.contains("math") ||
                     lowercaseInput.contains("+") || lowercaseInput.contains("-") ||
                     lowercaseInput.contains("*") || lowercaseInput.contains("/") ||
+                    lowercaseInput.contains("%") || lowercaseInput.contains(" = ") ||
                     input.contains("计算") || input.contains("等于") {
             return .calculator
         }
@@ -1400,9 +1476,10 @@ struct ToolCallView: View {
             return .search
         }
         // QR Code (expanded to include Chinese keywords and URL detection)
-        else if lowercaseInput.contains("qr") || lowercaseInput.contains("qrcode") || lowercaseInput.contains("qr code") ||
-                    lowercaseInput.contains("barcode") || input.contains("二维码") || input.contains("条码") || input.contains("扫码") || input.contains("生成二维码") ||
-                    containsURL(lowercaseInput) {
+    else if (lowercaseInput.contains("qr") || lowercaseInput.contains("qrcode") || lowercaseInput.contains("qr code") ||
+            lowercaseInput.contains("barcode") || input.contains("二维码") || input.contains("条码") || input.contains("扫码") || input.contains("生成二维码")) &&
+            // Avoid misfiring when only generic words like generate/生成 appear without QR context
+            (lowercaseInput.contains("qr") || input.contains("二维码") || containsURL(lowercaseInput)) {
             return .qrGenerator
         }
         // Color Palette
