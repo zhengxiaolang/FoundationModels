@@ -501,7 +501,7 @@ final class SimpleCookieJar {
 
 struct LoginTool: Tool {
     let name = "login"
-    let description = "Authenticate (TestVC style) via preflight + /services/User/Login"
+    let description = "Authenticate (TestVC style) via GET /phone/ cookie + POST /services/User/Login"
 
     @Generable
     struct Arguments {
@@ -512,126 +512,222 @@ struct LoginTool: Tool {
         @Guide(description: "Authentication type (default 0)") var authenticationType: Int
     }
 
+    // Cache latest token for subsequent y-token calculations
+    private static var cachedToken: String? = nil
+
     func call(arguments: Arguments) async throws -> String {
-        // Mirror TestVC.m: 1) gettokenInfo (preflight POST to base) 2) loginWithHeaderDic (POST to /services/User/Login)
+        // Implements LOGIN_API.md (y-token integrity headers) - MUST send cipplatform / x-token / y-token
+        // 1. Normalize base url (trim slash). Accept either plain host or already ending with /services or /services/
         let baseRaw = arguments.siteaddress.trimmingCharacters(in: .whitespacesAndNewlines)
-        let base = baseRaw.hasSuffix("/") ? String(baseRaw.dropLast()) : baseRaw
-        guard let baseURL = URL(string: base) else { throw ToolCallError.invalidExpression }
-        let loginURLString = base + "/services/User/Login"
+        let trimmedBase = baseRaw.hasSuffix("/") ? String(baseRaw.dropLast()) : baseRaw
+        guard let _ = URL(string: trimmedBase) else { throw ToolCallError.invalidExpression }
+        // Avoid duplicating /services if user already included it
+        let lower = trimmedBase.lowercased()
+        let hasServicesSuffix = lower.hasSuffix("/services")
+    // (Removed unused baseWithoutServices variable; trimmedBase already holds the normalized base)
+        // Build final login URL per spec: {BaseApiUrl}User/Login (where BaseApiUrl normally ends with /services/)
+        // If user already gave a base including /services, we still want single /services/User/Login
+        let loginURLString: String = hasServicesSuffix ? trimmedBase + "/User/Login" : trimmedBase + "/services/User/Login"
         guard let loginURL = URL(string: loginURLString) else { throw ToolCallError.invalidExpression }
 
-        let body: [String: Any] = [
-            "username": arguments.username,
-            "password": arguments.password,
-            "domain": arguments.domain,
-            "siteaddress": base,
-            "authenticationType": arguments.authenticationType
-        ]
-
-        // Step 1: Preflight (simulate JavaScript xhr + window.req.generalHeaders)
-        var preHeaders: [String: String] = [:]
-        do {
-            var preReq = URLRequest(url: baseURL)
-            preReq.httpMethod = "POST"
-            preReq.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            preReq.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
-            preReq.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
-            preReq.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
-            preReq.setValue("no-cache", forHTTPHeaderField: "Pragma")
-            preReq.setValue(userAgentString(), forHTTPHeaderField: "User-Agent")
-            preReq.httpBody = try JSONSerialization.data(withJSONObject: body)
-            let (_, response) = try await URLSession.shared.data(for: preReq)
-            if let http = response as? HTTPURLResponse {
-                if let setCookie = http.allHeaderFields.first(where: { String(describing: $0.key).lowercased() == "set-cookie" })?.value as? String {
-                    preHeaders["Cookie"] = setCookie
-                }
-                // Copy token/session related headers
-                http.allHeaderFields.forEach { k, v in
-                    if let ks = k as? String, let vs = v as? String {
-                        let lk = ks.lowercased()
-                        if lk.contains("token") || lk.contains("auth") || lk.contains("session") {
-                            preHeaders[ks] = vs
-                        }
-                    }
-                }
-            }
-        } catch {
-            // Fallback basic headers if preflight fails
+        // 2. Build credential payload (siteaddress optional)
+        struct Credential: Codable {
+            var username: String
+            var password: String
+            var domain: String
+            var authenticationType: Int
+            var token: String? = nil
+            var siteaddress: String? = nil
         }
-        // Ensure base mandatory headers (as in TestVC AFNetworking setup + inferred browser headers)
-        preHeaders["Content-Type"] = "application/json"
-        preHeaders["X-Requested-With"] = "XMLHttpRequest"
-        preHeaders["Accept"] = "application/json, text/plain, */*"
-        preHeaders["User-Agent"] = userAgentString()
+        let credential = Credential(
+            username: arguments.username,
+            password: arguments.password,
+            domain: arguments.domain,
+            authenticationType: arguments.authenticationType,
+            token: nil,
+            siteaddress: trimmedBase
+        )
 
-        // Step 2: Actual Login
-        var loginReq = URLRequest(url: loginURL)
-        loginReq.httpMethod = "POST"
-        preHeaders.forEach { loginReq.setValue($0.value, forHTTPHeaderField: $0.key) }
-        do { loginReq.httpBody = try JSONSerialization.data(withJSONObject: body) } catch { throw ToolCallError.invalidExpression }
+    // 3. Prepare request (encode once to ensure body used for hash == body sent)
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [] // keep compact
+    let bodyData = try encoder.encode(credential)
+    guard let bodyRaw = String(data: bodyData, encoding: .utf8) else { throw ToolCallError.invalidExpression }
 
+    var req = URLRequest(url: loginURL)
+    req.httpMethod = "POST"
+    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    req.setValue("application/json", forHTTPHeaderField: "Accept")
+    if let langCode = Locale.current.identifier.split(separator: "_").first { req.setValue("\(langCode)-CN", forHTTPHeaderField: "Accept-Language") }
+    // y-token headers (DataIntegrityFilter) via static helper (central place for future reuse)
+    let tokenForCalc = LoginTool.cachedToken
+    let yMeta = LoginTool.makeYTokenHeaders(fullURL: loginURL.absoluteString, bodyRaw: bodyRaw, xToken: tokenForCalc)
+    req.setValue(yMeta.platform, forHTTPHeaderField: "cipplatform")
+    req.setValue(yMeta.xToken, forHTTPHeaderField: "x-token")
+    req.setValue(String(yMeta.yToken), forHTTPHeaderField: "y-token")
+    req.httpBody = bodyData
+
+        // 4. Use URLSession with cookie handling enabled
+        let config = URLSessionConfiguration.default
+        config.httpShouldSetCookies = true
+        config.httpCookieAcceptPolicy = .always
+        let session = URLSession(configuration: config)
+
+        // 5. Perform request
+        let (data, response): (Data, URLResponse)
         do {
-            let (data, response) = try await URLSession.shared.data(for: loginReq)
-            guard let http = response as? HTTPURLResponse else { throw ToolCallError.networkError }
-            let code = http.statusCode
-            let text = String(data: data, encoding: .utf8)
-            if code == 200 {
-                if let t = text, let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                    // JSON success
-                    return """
-                    🔐 Login Successful (JSON)
-                    User: \(arguments.username)
-                    Site: \(base)
-                    Endpoint: /services/User/Login
-                    Status: 200 OK
-                    JSON: \(compactJSONString(json))
-                    Headers Used: \(preHeaders.keys.joined(separator: ", "))
-                    """
-                } else if let t = text, !t.isEmpty {
-                    // Text body (like setLoginInfo usage)
-                    return """
-                    🔐 Login Successful (Text)
-                    User: \(arguments.username)
-                    Site: \(base)
-                    Endpoint: /services/User/Login
-                    Status: 200 OK
-                    Body: \(t.prefix(800))
-                    (Ready for JavaScript setLoginInfo equivalent)
-                    """
-                } else {
-                    return """
-                    🔐 Login Successful (Empty/Binary)
-                    User: \(arguments.username)
-                    Site: \(base)
-                    Endpoint: /services/User/Login
-                    Status: 200 OK
-                    """
-                }
-            } else {
-                return """
-                ❌ Login Failed (HTTP \(code))
-                User: \(arguments.username)
-                Site: \(base)
-                Endpoint: /services/User/Login
-                Error Body: \(text ?? "<none>")
-                Sent Headers: \(preHeaders.map { "\($0.key)=\($0.value)" }.joined(separator: "; "))
-                Troubleshoot: check credentials / network / server availability
-                """
-            }
+            (data, response) = try await session.data(for: req)
         } catch {
+            throw ToolCallError.networkError
+        }
+        guard let http = response as? HTTPURLResponse else { throw ToolCallError.networkError }
+
+        // 6. Parse response body (handle possible gzip, though spec likely plain JSON)
+        let rawData: Data
+        if let encoding = http.value(forHTTPHeaderField: "Content-Encoding")?.lowercased(), encoding.contains("gzip"), let unzipped = gunzip(data: data) { rawData = unzipped } else { rawData = data }
+
+        // 7. Attempt JSON parse & flexible date normalization for lastActiveTime
+        var jsonSummary = ""
+        if let obj = try? JSONSerialization.jsonObject(with: rawData) as? [String: Any] {
+            jsonSummary = compactJSONString(obj)
+        } else if let text = String(data: rawData, encoding: .utf8) {
+            jsonSummary = text
+        }
+
+        // 8. Build output string
+        if http.statusCode == 200 {
+            // Extract token if present & cache for subsequent calls
+            var tokenValue: String = ""
+            if let obj = try? JSONSerialization.jsonObject(with: rawData) as? [String: Any] {
+                if let t = obj["token"] as? String, !t.isEmpty {
+                    tokenValue = t
+                    LoginTool.cachedToken = t
+                }
+            }
             return """
-            ❌ Login Failed (Network Error)
+            🔐 Login Successful
+            Endpoint: \(loginURLString)
             User: \(arguments.username)
-            Site: \(base)
-            Error: \(error.localizedDescription)
+            Domain: \(arguments.domain.isEmpty ? "<none>" : arguments.domain)
+            AuthType: \(arguments.authenticationType)
+            HTTP: 200
+            Token: \(tokenValue.isEmpty ? "<none>" : tokenValue)
+            y-token Sent: \(yMeta.yToken) (x-token=\(yMeta.xToken))
+            Body(JSON/Text): \(jsonSummary.prefix(1200))
             """
+        } else {
+                        return """
+                        ❌ Login Failed
+                        Endpoint: \(loginURLString)
+                        User: \(arguments.username)
+                        HTTP: \(http.statusCode)
+                        Body Snippet: \(jsonSummary.prefix(800))
+                        Hints:
+                            • 确认 BaseApiUrl 是否正确 (应以 /SAWS-WebAPI 结束)
+                            • 确认路径包含 /services/User/Login
+                            • 检查 authenticationType 与 domain 是否匹配
+                            • 若仍 403/404，可尝试切换到 /User/Login 以兼容不同版本
+                            • 确认 y-token 计算是否一致 (body/URL/大小写/重复解码)
+                        """
         }
+    }
+
+    // MARK: - y-token Helpers (static for reuse)
+    private static func hash31(_ s: String) -> Int32 {
+        var h: Int32 = 0
+        for u in s.utf8 { h = Int32(bitPattern: UInt32(bitPattern: h) &* 31) &+ Int32(u) }
+        return h
+    }
+    private static func repeatedURLDecodeLower(_ url: String) -> String {
+        var current = url
+        while let decoded = current.removingPercentEncoding, decoded != current { current = decoded }
+        return current.lowercased()
+    }
+    static func makeYTokenHeaders(fullURL: String, bodyRaw: String, xToken: String?) -> (platform: String, xToken: String, yToken: Int32) {
+        let platform = "1"
+        let realX = xToken ?? String(Int64(Date().timeIntervalSince1970 * 1000))
+        let urlNorm = repeatedURLDecodeLower(fullURL)
+        let bodyConcat = bodyRaw + urlNorm
+        let bodyHash = hash31(bodyConcat)
+        let headerHash = hash31("\(platform)_\(realX)")
+        let y = hash31("\(bodyHash)_\(headerHash)")
+        return (platform, realX, y)
     }
 
     private func userAgentString() -> String { "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148" }
     private func compactJSONString(_ json: [String: Any]) -> String {
         if let d = try? JSONSerialization.data(withJSONObject: json, options: [.sortedKeys]), let s = String(data: d, encoding: .utf8) { return s }
         return "{}"
+    }
+    private func extractCombinedCookies(from http: HTTPURLResponse) -> String {
+        var parts: [String] = []
+        for (k,v) in http.allHeaderFields {
+            if String(describing: k).lowercased() == "set-cookie", let sc = v as? String {
+                if let first = sc.components(separatedBy: ";").first { parts.append(first) }
+            }
+        }
+        return parts.joined(separator: "; ")
+    }
+    private func gatheredHeadersSummary(_ headers: [String: String]) -> String {
+        let show = ["Content-Type","Accept","X-Requested-With","User-Agent","Cookie"]
+        return headers.filter { k,_ in show.contains { $0.caseInsensitiveCompare(k) == .orderedSame } }
+            .map { "\($0.key)=\($0.value)" }.joined(separator: "; ")
+    }
+    private func formatLoginResult(http: HTTPURLResponse, data: Data, username: String, site: String, preflight: String, first403: String?, headers: [String:String]) -> String {
+        let code = http.statusCode
+        let bodyText = String(data: data, encoding: .utf8) ?? ""
+        if code == 200 {
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                return """
+                🔐 Login Successful (JSON)
+                User: \(username)
+                Site: \(site)
+                JSON: \(compactJSONString(json))
+                Headers: \(gatheredHeadersSummary(headers))
+                Preflight: \(preflight)
+                """
+            } else if !bodyText.isEmpty {
+                return """
+                🔐 Login Successful (Text)
+                User: \(username)
+                Site: \(site)
+                Body(≤800): \(bodyText.prefix(800))
+                Headers: \(gatheredHeadersSummary(headers))
+                Preflight: \(preflight)
+                """
+            } else {
+                return """
+                🔐 Login Successful (Empty)
+                User: \(username)
+                Site: \(site)
+                Headers: \(gatheredHeadersSummary(headers))
+                Preflight: \(preflight)
+                """
+            }
+        } else if code == 403 {
+            return """
+            ❌ Login Failed (403 Access Denied)
+            User: \(username)
+            Site: \(site)
+            Body Snippet: \(bodyText.prefix(400))
+            First Attempt Body: \(first403?.prefix(200) ?? "<n/a>")
+            Sent Headers: \(gatheredHeadersSummary(headers))
+            Preflight: \(preflight)
+            Next Steps:
+              • Confirm credentials in browser succeed
+              • Compare Network tab request headers & cookies
+              • Ensure no extra headers (we now send minimal set)
+            """
+        } else {
+            return """
+            ❌ Login Failed (HTTP \(code))
+            User: \(username)
+            Site: \(site)
+            Body Snippet: \(bodyText.prefix(400))
+            Sent Headers: \(gatheredHeadersSummary(headers))
+            Preflight: \(preflight)
+            """
+        }
     }
 }
 
@@ -1494,7 +1590,9 @@ struct ToolCallView: View {
 
         // Provide a default site if missing so users can just input account/password
         if site.isEmpty {
-            site = "https://aiwin.sogoodsofast.com/SAWS-WebAPI"
+            // Default updated to internal service base; full login URL becomes http://192.168.40.159:8866/services/User/Login
+            site = "https://cipweb-test-dev.sogoodsofast.com/Offline_API"
+            //site = "http://192.168.40.159:8866"
         }
 
         guard !username.isEmpty, !password.isEmpty, !site.isEmpty else {
