@@ -582,7 +582,7 @@ struct LoginTool: Tool {
     }
 
     // Cache latest token for subsequent y-token calculations
-    private static var cachedToken: String? = nil
+    static var cachedToken: String? = nil
 
     func call(arguments: Arguments) async throws -> String {
         // Implements LOGIN_API.md (y-token integrity headers) - MUST send cipplatform / x-token / y-token
@@ -794,6 +794,335 @@ struct LoginTool: Tool {
     }
 }
 
+// MARK: - SearchReportTool
+
+struct SearchReportTool: Tool {
+    let name = "searchReport"
+    let description = 
+    """
+        Search inspection reports by name.
+        Supported examples:
+            • search report with name 13
+            • find inspection report name 13
+            • search cstm_inspectionreport name 13
+        Requires successful login first to get cached token.
+    """
+    @Generable
+    struct Arguments {
+        @Guide(description: "Name to search for in inspection reports") var name: String
+        @Guide(description: "Base site address, e.g. https://cipweb-test-dev.sogoodsofast.com/Offline_API") var siteaddress: String
+    }
+
+    func call(arguments: Arguments) async throws -> String {
+        // Check if we have cached token from login
+        guard let cachedToken = LoginTool.cachedToken else {
+            return """
+            ❌ Search Failed
+            Error: No cached token available. Please login first using the login tool.
+            """
+        }
+        
+        // 1. Normalize base url (trim slash)
+        let baseRaw = arguments.siteaddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedBase = baseRaw.hasSuffix("/") ? String(baseRaw.dropLast()) : baseRaw
+        guard let _ = URL(string: trimmedBase) else { throw ToolCallError.invalidExpression }
+        
+        // Build search URL: {BaseApiUrl}services/search?entityName=cstm_inspectionreport
+        let searchURLString = trimmedBase + "/services/search?entityName=cstm_inspectionreport"
+        guard let searchURL = URL(string: searchURLString) else { throw ToolCallError.invalidExpression }
+
+        // 2. Build search payload
+        let searchPayload: [String: Any] = [
+            "entityName": "cstm_inspectionreport",
+            "pageId": "5112192__tabitem1",
+            "pageType": "search",
+            "fieldId": "button4",
+            "componentId": "buttonbar4",
+            "data": [
+                "cstm_inspectionreport-name2": arguments.name
+            ],
+            "operator": [
+                "key": "search",
+                "sourceComponentIds": ["buttonbar8", "searchform2"],
+                "targetComponentIds": ["cardlist1"],
+                "sourceFields": [
+                    [
+                        "componentId": "buttonbar8",
+                        "fieldId": "iconbutton1"
+                    ]
+                ],
+                "targetFields": [],
+                "runat": "client",
+                "params": [
+                    "entityName": "cstm_inspectionreport"
+                ],
+                "inactive": false
+            ],
+            "pageInstanceId": "1756103657684"
+        ]
+
+        // 3. Prepare request
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [] // keep compact
+        let bodyData = try JSONSerialization.data(withJSONObject: searchPayload)
+        guard let bodyRaw = String(data: bodyData, encoding: .utf8) else { throw ToolCallError.invalidExpression }
+
+        var req = URLRequest(url: searchURL)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let langCode = Locale.current.identifier.split(separator: "_").first { 
+            req.setValue("\(langCode)-CN", forHTTPHeaderField: "Accept-Language") 
+        }
+        
+        // y-token headers (DataIntegrityFilter) via static helper (central place for future reuse)
+        let tokenForCalc = LoginTool.cachedToken
+        let yMeta = LoginTool.makeYTokenHeaders(fullURL: searchURL.absoluteString, bodyRaw: bodyRaw, xToken: tokenForCalc)
+        req.setValue(yMeta.platform, forHTTPHeaderField: "cipplatform")
+        req.setValue(yMeta.xToken, forHTTPHeaderField: "x-token")
+        req.setValue(String(yMeta.yToken), forHTTPHeaderField: "y-token")
+        
+        req.httpBody = bodyData
+
+        // 4. Use URLSession with cookie handling enabled
+        let config = URLSessionConfiguration.default
+        config.httpShouldSetCookies = true
+        config.httpCookieAcceptPolicy = .always
+        let session = URLSession(configuration: config)
+
+        // 5. Perform request
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await session.data(for: req)
+        } catch {
+            throw ToolCallError.networkError
+        }
+        guard let http = response as? HTTPURLResponse else { throw ToolCallError.networkError }
+
+        // 6. Parse response body
+        let rawData: Data
+        if let encoding = http.value(forHTTPHeaderField: "Content-Encoding")?.lowercased(), 
+           encoding.contains("gzip"), 
+           let unzipped = gunzip(data: data) { 
+            rawData = unzipped 
+        } else { 
+            rawData = data 
+        }
+
+        // 7. Build output string
+        var jsonSummary = ""
+        if let obj = try? JSONSerialization.jsonObject(with: rawData) as? [String: Any] {
+            jsonSummary = compactJSONString(obj)
+        } else if let text = String(data: rawData, encoding: .utf8) {
+            jsonSummary = text
+        }
+
+        if http.statusCode == 200 {
+            // Parse the response to extract name and status information
+            let formattedResult = formatSearchReportResult(jsonSummary: jsonSummary, searchName: arguments.name)
+            return """
+            🔍 Search Report Successful
+            Endpoint: \(searchURLString)
+            Search Name: \(arguments.name)
+            HTTP: 200
+            Token Used: \(cachedToken)
+            y-token Sent: \(yMeta.yToken) (x-token=\(yMeta.xToken))
+            
+            \(formattedResult)
+            """
+        } else {
+            return """
+            ❌ Search Report Failed
+            Endpoint: \(searchURLString)
+            Search Name: \(arguments.name)
+            HTTP: \(http.statusCode)
+            y-token Sent: \(yMeta.yToken) (x-token=\(yMeta.xToken))
+            Response: \(jsonSummary.prefix(800))
+            """
+        }
+    }
+    
+    private func compactJSONString(_ json: [String: Any]) -> String {
+        if let d = try? JSONSerialization.data(withJSONObject: json, options: [.sortedKeys]), 
+           let s = String(data: d, encoding: .utf8) { 
+            return s 
+        }
+        return "{}"
+    }
+    
+    private func formatSearchReportResult(jsonSummary: String, searchName: String) -> String {
+        // Try to parse the JSON response
+        guard let data = jsonSummary.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let cardlist = json["cardlist1"] as? [[String: Any]] else {
+            return "Raw Response: \(jsonSummary.prefix(800))"
+        }
+        
+        if cardlist.isEmpty {
+            return """
+            📋 Search Results
+            
+            No reports found for name: "\(searchName)"
+            """
+        }
+        
+        var formattedResults = """
+        📋 Search Results for "\(searchName)"
+        
+        """
+        
+        for (index, item) in cardlist.enumerated() {
+            let name = item["cstm_inspectionreport-name1"] as? [String: Any]
+            let status = item["cstm_inspectionreport-statusid1"] as? [String: Any]
+            
+            let nameText = name?["text"] as? String ?? "Unknown"
+            let statusText = status?["text"] as? String ?? "Unknown"
+            
+            formattedResults += """
+            \(index + 1). Name: \(nameText)
+               Status: \(statusText)
+            
+            """
+        }
+        
+        return formattedResults
+    }
+}
+
+// MARK: - SearchReportResultView
+
+struct SearchReportResultView: View {
+    let output: String
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Parse and display the formatted results
+            if let parsedResults = parseSearchReportOutput(output) {
+                VStack(alignment: .leading, spacing: 12) {
+                    // Header
+                    HStack {
+                        Image(systemName: "doc.text.magnifyingglass")
+                            .foregroundColor(.indigo)
+                        Text("Search Results")
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                    }
+                    .padding(.bottom, 4)
+                    
+                    // Results
+                    if parsedResults.isEmpty {
+                        HStack {
+                            Image(systemName: "exclamationmark.triangle")
+                                .foregroundColor(.orange)
+                            Text("No reports found")
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.vertical, 8)
+                        .padding(.horizontal, 12)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(8)
+                    } else {
+                        ForEach(Array(parsedResults.enumerated()), id: \.offset) { index, result in
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack {
+                                    Text("\(index + 1).")
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.indigo)
+                                    
+                                    Text(result.name)
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                }
+                                
+                                HStack {
+                                    Text(result.status)
+                                        .font(.caption)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 2)
+                                        .background(statusColor(for: result.status))
+                                        .foregroundColor(.white)
+                                        .cornerRadius(4)
+                                }
+                            }
+                            .padding(.vertical, 8)
+                            .padding(.horizontal, 12)
+                            .background(Color(.systemGray6))
+                            .cornerRadius(8)
+                        }
+                    }
+                }
+            } else {
+                // Fallback to raw text if parsing fails
+                Text(output)
+                    .font(.body)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color(.systemGray6))
+                    .cornerRadius(8)
+            }
+        }
+    }
+    
+    private func parseSearchReportOutput(_ output: String) -> [SearchReportItem]? {
+        // Look for the formatted results section
+        guard let resultsStart = output.range(of: "📋 Search Results") else {
+            return nil
+        }
+        
+        let resultsText = String(output[resultsStart.lowerBound...])
+        var items: [SearchReportItem] = []
+        
+        // Parse each result line
+        let lines = resultsText.components(separatedBy: .newlines)
+        var currentName: String?
+        
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            
+            // Match "1. Name: xxx" pattern - extract only the name part
+            if let regex = try? NSRegularExpression(pattern: #"^\d+\.\s*Name:\s*(.+)$"#, options: []),
+               let match = regex.firstMatch(in: trimmed, options: [], range: NSRange(location: 0, length: trimmed.utf16.count)) {
+                let nameRange = match.range(at: 1) // Get the captured group
+                if let range = Range(nameRange, in: trimmed) {
+                    currentName = String(trimmed[range]).trimmingCharacters(in: .whitespaces)
+                }
+            }
+            // Match "Status: xxx" pattern
+            else if let regex = try? NSRegularExpression(pattern: #"^Status:\s*(.+)$"#, options: []),
+                    let match = regex.firstMatch(in: trimmed, options: [], range: NSRange(location: 0, length: trimmed.utf16.count)),
+                    let name = currentName {
+                let statusRange = match.range(at: 1) // Get the captured group
+                if let range = Range(statusRange, in: trimmed) {
+                    let status = String(trimmed[range]).trimmingCharacters(in: .whitespaces)
+                    items.append(SearchReportItem(name: name, status: status))
+                    currentName = nil
+                }
+            }
+        }
+        
+        return items.isEmpty ? nil : items
+    }
+    
+    private func statusColor(for status: String) -> Color {
+        switch status.lowercased() {
+        case "approved":
+            return .green
+        case "pending":
+            return .orange
+        case "rejected":
+            return .red
+        default:
+            return .gray
+        }
+    }
+}
+
+struct SearchReportItem {
+    let name: String
+    let status: String
+}
+
 // MARK: - Error Types
 
 enum CalculationError: Error, LocalizedError {
@@ -845,8 +1174,12 @@ struct ToolCallView: View {
     // Natural language examples for quick selection
     private var quickSelectionData: [String] {
         return [
-            "What's the weather in Beijing?",
             "Login with username superadmin and password 0115, then check the result.",
+            "search report with name Test",
+            "search report with name Case",
+            "search report with name 0722",
+            "What's the weather in Beijing?",
+            
             "Use superadmin / 0000 to log in and verify the result.",
             "账号跟密码分别为superadmin/0115, 登录下",
             "Calculate 25 * 4 + 10",
@@ -1255,6 +1588,10 @@ struct ToolCallView: View {
         let translatorKeywords = ["translate", "翻译", "translation", "中文", "english", "英文", "chinese", "日文", "japanese", "korean", "韩文", "french", "法文", "german", "德文"]
         scores[.translator] = countKeywords(in: lowercaseInput, keywords: translatorKeywords)
 
+        // 搜索报告相关关键词（必须优先于通用搜索）
+        let searchReportKeywords = ["search report", "inspection report", "搜索报告", "检查报告", "报告搜索"]
+        scores[.searchReport] = countKeywords(in: lowercaseInput, keywords: searchReportKeywords)
+        
         // 搜索相关关键词
         let searchKeywords = ["search", "搜索", "find", "查找", "lookup", "look up", "google", "百度", "information", "信息", "about", "关于"]
         scores[.search] = countKeywords(in: lowercaseInput, keywords: searchKeywords)
@@ -1319,6 +1656,12 @@ struct ToolCallView: View {
         if lowercaseInput.range(of: #"(?i)login\s+with\s+username\s+[^,\s/]+\s+and\s+password\s+[^,\s/]+"#, options: .regularExpression) != nil {
             scores[.login] = (scores[.login] ?? 0) + 8
         }
+        
+        // 搜索报告优先级调整：如果检测到search report相关关键词，大幅提升searchReport分数，降低search分数
+        if (scores[.searchReport] ?? 0) > 0 {
+            scores[.searchReport] = (scores[.searchReport] ?? 0) + 10  // 大幅提升searchReport分数
+            scores[.search] = max(0, (scores[.search] ?? 0) - 5)      // 降低search分数
+        }
 
         // Slash 凭据形式 "superadmin / 0115" (前面可能有 use / login words)
         if lowercaseInput.range(of: #"(?i)(?:use|login|log in)?\s*[^,\s/]+\s*/\s*[^,\s/]+"#, options: .regularExpression) != nil && lowercaseInput.contains("/") {
@@ -1337,7 +1680,7 @@ struct ToolCallView: View {
         }
 
         // 如果所有特定工具分数都为0，使用 general
-        let allSpecific: [ToolType] = [.weather, .calculator, .translator, .search, .qrGenerator, .colorPalette, .login]
+        let allSpecific: [ToolType] = [.weather, .calculator, .translator, .search, .searchReport, .qrGenerator, .colorPalette, .login]
         if allSpecific.allSatisfy({ (scores[$0] ?? 0) == 0 }) {
             suggestedTool = .general
             selectedTool = .general
@@ -1424,6 +1767,9 @@ struct ToolCallView: View {
         } else if currentTool == .login {
             // Use natural language from input box to parse credentials and login
             result = try await performLogin(naturalInput: inputText)
+        } else if currentTool == .searchReport {
+            // Use natural language from input box to parse search report parameters
+            result = try await performSearchReport(naturalInput: inputText)
         } else if currentTool == .general {
             // Lightweight general answer without loading all tools
             result = try await performGeneralAnswer(query: inputText)
@@ -1453,8 +1799,8 @@ struct ToolCallView: View {
     private func performNaturalLanguageToolCall(input: String) async throws -> ToolCallResult {
         // Create a session with all real API tools following official demo pattern
         let session = LanguageModelSession(
-            tools: [WeatherTool(), CalculatorTool(), TranslatorTool(), SearchTool(), QRGeneratorTool(), ColorPaletteTool(), LoginTool()],
-            instructions: "Help the person with weather information, calculations, translations, internet searches, QR code generation, and color palette creation using real APIs"
+            tools: [WeatherTool(), CalculatorTool(), TranslatorTool(), SearchTool(), QRGeneratorTool(), ColorPaletteTool(), LoginTool(), SearchReportTool()],
+            instructions: "Help the person with weather information, calculations, translations, internet searches, QR code generation, color palette creation, login, and inspection report search using real APIs"
         )
 
         // Make the request using natural language - exactly like official demo
@@ -1510,6 +1856,11 @@ struct ToolCallView: View {
                     input.contains("翻译") {
             return .translator
         }
+        // Search Report (must come before general search to avoid misclassification)
+        else if lowercaseInput.contains("search report") || lowercaseInput.contains("inspection report") || 
+                  input.contains("搜索报告") || input.contains("检查报告") || input.contains("报告搜索") {
+            return .searchReport
+        }
         // Search
         else if lowercaseInput.contains("search") || lowercaseInput.contains("find") || lowercaseInput.contains("lookup") ||
                     input.contains("搜索") || input.contains("查找") {
@@ -1550,6 +1901,8 @@ struct ToolCallView: View {
             return try await generateColorPalette(description: input)
         case .login:
             return try await performLogin(naturalInput: input)
+        case .searchReport:
+            return try await performSearchReport(naturalInput: input)
         case .general:
             return try await performGeneralAnswer(query: input)
         }
@@ -1815,6 +2168,75 @@ struct ToolCallView: View {
                 "authType": String(authType)
             ]
         )
+    }
+
+    private func performSearchReport(naturalInput: String) async throws -> ToolCallResult {
+        let parsed = extractSearchReportParams(from: naturalInput)
+        var name = parsed.name
+        var site = parsed.site
+        
+        // Provide default site if still empty
+        if site.isEmpty { site = "https://cipweb-test-dev.sogoodsofast.com/Offline_API" }
+        
+        guard !name.isEmpty, !site.isEmpty else {
+            throw ToolCallError.invalidExpression
+        }
+        
+        // Execute SearchReportTool directly with parsed arguments
+        let args = SearchReportTool.Arguments(
+            name: name,
+            siteaddress: site
+        )
+        let output = try await SearchReportTool().call(arguments: args)
+        
+        return ToolCallResult(
+            tool: .searchReport,
+            input: "site=\(site) name=\(name)",
+            output: output,
+            success: true,
+            metadata: [
+                "site": site,
+                "name": name
+            ]
+        )
+    }
+    
+    // Extract search report parameters from natural language input
+    private func extractSearchReportParams(from text: String) -> (name: String, site: String) {
+        let input = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lower = input.lowercased()
+        var name = ""
+        var site = ""
+        
+        // 1. Key-value style tokens
+        let separators = CharacterSet(charactersIn: " ,;\n\t")
+        let tokens = input.split(whereSeparator: { separators.contains($0.unicodeScalars.first!) })
+        for raw in tokens {
+            let t = String(raw)
+            if t.contains("=") || t.contains(":") || t.contains("：") {
+                let parts = t.replacingOccurrences(of: "：", with: ":").split(whereSeparator: { $0 == "=" || $0 == ":" })
+                if parts.count == 2 {
+                    let k = parts[0].lowercased()
+                    let v = String(parts[1])
+                    if name.isEmpty && ["name", "名称", "名字"].contains(where: { k.contains($0) }) { name = v }
+                    else if site.isEmpty && ["site", "siteaddress", "url", "地址", "站点"].contains(where: { k.contains($0) }) { site = v }
+                }
+            }
+        }
+        
+        // 2. Pattern matching for name
+        if name.isEmpty {
+            // Look for patterns like "name 13" or "名称 13"
+            if let match = firstMatch(in: input, pattern: #"(?i)(?:name|名称|名字)\s+([^\s,，]+)"#, options: []) {
+                name = match
+            }
+            // Look for patterns like "search report 13" or "搜索报告 13"
+            else if let match = firstMatch(in: input, pattern: #"(?i)(?:search\s+report|搜索报告|检查报告)\s+([^\s,，]+)"#, options: []) {
+                name = match
+            }
+        }
+        
+        return (name: name, site: site)
     }
 
     // Universal multi-language credential extraction (English + Chinese + generic patterns)
@@ -2149,6 +2571,7 @@ enum ToolType: CaseIterable {
     case qrGenerator
     case colorPalette
     case login
+    case searchReport
     case general
 
     var displayName: String {
@@ -2160,6 +2583,7 @@ enum ToolType: CaseIterable {
         case .qrGenerator: return "QR Generator"
         case .colorPalette: return "Color Palette"
     case .login: return "Login"
+    case .searchReport: return "Search Report"
     case .general: return "General"
         }
     }
@@ -2173,6 +2597,7 @@ enum ToolType: CaseIterable {
         case .qrGenerator: return "Generate QR codes"
         case .colorPalette: return "Generate theme colors"
     case .login: return "Authenticate to a site via API"
+    case .searchReport: return "Search inspection reports by name"
     case .general: return "General question answering"
         }
     }
@@ -2186,6 +2611,7 @@ enum ToolType: CaseIterable {
         case .qrGenerator: return "qrcode"
         case .colorPalette: return "paintbrush"
     case .login: return "lock"
+    case .searchReport: return "doc.text.magnifyingglass"
     case .general: return "questionmark.circle"
         }
     }
@@ -2200,6 +2626,7 @@ enum ToolType: CaseIterable {
         case .colorPalette: return .pink
         // Updated to a more visually appealing accent color instead of gray
     case .login: return .teal
+    case .searchReport: return .indigo
     case .general: return Color.indigo // brighter than gray
         }
     }
@@ -2213,6 +2640,7 @@ enum ToolType: CaseIterable {
         case .qrGenerator: return "Enter text to generate QR code"
         case .colorPalette: return "Describe color theme, e.g.: Spring"
     case .login: return "login username=... password=... site=https://..."
+    case .searchReport: return "search report name=13 site=https://..."
     case .general: return "Ask any general question"
         }
     }
@@ -2226,6 +2654,7 @@ enum ToolType: CaseIterable {
         case .qrGenerator: return "Supports text, links and other content"
         case .colorPalette: return "Generate color schemes based on description"
     case .login: return "POSTs credentials to /services/User/Login; returns status and r-token header"
+    case .searchReport: return "Search inspection reports using cached login token"
     case .general: return "Fallback tool for questions not matched by other tools"
         }
     }
@@ -2379,12 +2808,16 @@ struct ToolCallResultCard: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
 
-                Text(result.output)
-                    .font(.body)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Color(.systemGray6))
-                    .cornerRadius(8)
+                if result.tool == .searchReport {
+                    SearchReportResultView(output: result.output)
+                } else {
+                    Text(result.output)
+                        .font(.body)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(8)
+                }
             }
         }
         .background(Color(.systemBackground))
