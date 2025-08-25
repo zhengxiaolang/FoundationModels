@@ -832,15 +832,18 @@ struct SearchReportTool: Tool {
         guard let searchURL = URL(string: searchURLString) else { throw ToolCallError.invalidExpression }
 
         // 2. Build search payload
+        var dataDict: [String: Any] = [:]
+        if !arguments.name.isEmpty {
+            dataDict["cstm_inspectionreport-name2"] = arguments.name
+        }
+        
         let searchPayload: [String: Any] = [
             "entityName": "cstm_inspectionreport",
             "pageId": "5112192__tabitem1",
             "pageType": "search",
             "fieldId": "button4",
             "componentId": "buttonbar4",
-            "data": [
-                "cstm_inspectionreport-name2": arguments.name
-            ],
+            "data": dataDict,
             "operator": [
                 "key": "search",
                 "sourceComponentIds": ["buttonbar8", "searchform2"],
@@ -920,10 +923,11 @@ struct SearchReportTool: Tool {
         if http.statusCode == 200 {
             // Parse the response to extract name and status information
             let formattedResult = formatSearchReportResult(jsonSummary: jsonSummary, searchName: arguments.name)
+            let searchNameDisplay = arguments.name.isEmpty ? "All Reports" : arguments.name
             return """
             🔍 Search Report Successful
             Endpoint: \(searchURLString)
-            Search Name: \(arguments.name)
+            Search Name: \(searchNameDisplay)
             HTTP: 200
             Token Used: \(cachedToken)
             y-token Sent: \(yMeta.yToken) (x-token=\(yMeta.xToken))
@@ -931,10 +935,11 @@ struct SearchReportTool: Tool {
             \(formattedResult)
             """
         } else {
+            let searchNameDisplay = arguments.name.isEmpty ? "All Reports" : arguments.name
             return """
             ❌ Search Report Failed
             Endpoint: \(searchURLString)
-            Search Name: \(arguments.name)
+            Search Name: \(searchNameDisplay)
             HTTP: \(http.statusCode)
             y-token Sent: \(yMeta.yToken) (x-token=\(yMeta.xToken))
             Response: \(jsonSummary.prefix(800))
@@ -959,15 +964,17 @@ struct SearchReportTool: Tool {
         }
         
         if cardlist.isEmpty {
+            let emptyMessage = searchName.isEmpty ? "No reports found" : "No reports found for name: \"\(searchName)\""
             return """
             📋 Search Results
             
-            No reports found for name: "\(searchName)"
+            \(emptyMessage)
             """
         }
         
+        let title = searchName.isEmpty ? "All Reports" : "Search Results for \"\(searchName)\""
         var formattedResults = """
-        📋 Search Results for "\(searchName)"
+        📋 \(title)
         
         """
         
@@ -999,11 +1006,12 @@ struct SearchReportResultView: View {
             // Parse and display the formatted results
             if let parsedResults = parseSearchReportOutput(output) {
                 VStack(alignment: .leading, spacing: 12) {
-                    // Header
+                    // Header - determine title based on content
+                    let title = determineSearchReportTitle(from: output)
                     HStack {
-                        Image(systemName: "doc.text.magnifyingglass")
-                            .foregroundColor(.indigo)
-                        Text("Search Results")
+                        Image(systemName: "doc.text.below.ecg")
+                            .foregroundColor(.brown)
+                        Text(title)
                             .font(.headline)
                             .fontWeight(.semibold)
                     }
@@ -1028,7 +1036,7 @@ struct SearchReportResultView: View {
                                     Text("\(index + 1).")
                                         .font(.subheadline)
                                         .fontWeight(.medium)
-                                        .foregroundColor(.indigo)
+                                        .foregroundColor(.brown)
                                     
                                     Text(result.name)
                                         .font(.subheadline)
@@ -1065,8 +1073,11 @@ struct SearchReportResultView: View {
     }
     
     private func parseSearchReportOutput(_ output: String) -> [SearchReportItem]? {
-        // Look for the formatted results section
-        guard let resultsStart = output.range(of: "📋 Search Results") else {
+        // Look for the formatted results section - support both "Search Results" and "All Reports"
+        let searchResultsStart = output.range(of: "📋 Search Results")
+        let allReportsStart = output.range(of: "📋 All Reports")
+        
+        guard let resultsStart = searchResultsStart ?? allReportsStart else {
             return nil
         }
         
@@ -1102,6 +1113,16 @@ struct SearchReportResultView: View {
         }
         
         return items.isEmpty ? nil : items
+    }
+    
+    private func determineSearchReportTitle(from output: String) -> String {
+        if output.contains("📋 All Reports") {
+            return "All Reports"
+        } else if output.contains("📋 Search Results") {
+            return "Search Results"
+        } else {
+            return "Search Results" // fallback
+        }
     }
     
     private func statusColor(for status: String) -> Color {
@@ -1175,9 +1196,12 @@ struct ToolCallView: View {
     private var quickSelectionData: [String] {
         return [
             "Login with username superadmin and password 0115, then check the result.",
+            
+            "search all reports",
             "search report with name Test",
-            "search report with name Case",
-            "search report with name 0722",
+            "find inspection report Case",
+            "search for reports containing 0722",
+            
             "What's the weather in Beijing?",
             
             "Use superadmin / 0000 to log in and verify the result.",
@@ -1589,7 +1613,7 @@ struct ToolCallView: View {
         scores[.translator] = countKeywords(in: lowercaseInput, keywords: translatorKeywords)
 
         // 搜索报告相关关键词（必须优先于通用搜索）
-        let searchReportKeywords = ["search report", "inspection report", "搜索报告", "检查报告", "报告搜索"]
+        let searchReportKeywords = ["search report", "inspection report", "search for reports", "find inspection", "search all reports", "find all reports", "搜索报告", "检查报告", "报告搜索"]
         scores[.searchReport] = countKeywords(in: lowercaseInput, keywords: searchReportKeywords)
         
         // 搜索相关关键词
@@ -1661,6 +1685,12 @@ struct ToolCallView: View {
         if (scores[.searchReport] ?? 0) > 0 {
             scores[.searchReport] = (scores[.searchReport] ?? 0) + 10  // 大幅提升searchReport分数
             scores[.search] = max(0, (scores[.search] ?? 0) - 5)      // 降低search分数
+        }
+        
+        // 特别处理"search all reports"模式，确保优先选择searchReport
+        if lowercaseInput.contains("search all reports") || lowercaseInput.contains("find all reports") {
+            scores[.searchReport] = (scores[.searchReport] ?? 0) + 20  // 额外大幅提升
+            scores[.search] = 0  // 完全禁用通用搜索
         }
 
         // Slash 凭据形式 "superadmin / 0115" (前面可能有 use / login words)
@@ -1858,6 +1888,7 @@ struct ToolCallView: View {
         }
         // Search Report (must come before general search to avoid misclassification)
         else if lowercaseInput.contains("search report") || lowercaseInput.contains("inspection report") || 
+                  lowercaseInput.contains("search all reports") || lowercaseInput.contains("find all reports") ||
                   input.contains("搜索报告") || input.contains("检查报告") || input.contains("报告搜索") {
             return .searchReport
         }
@@ -2178,9 +2209,10 @@ struct ToolCallView: View {
         // Provide default site if still empty
         if site.isEmpty { site = "https://cipweb-test-dev.sogoodsofast.com/Offline_API" }
         
-        guard !name.isEmpty, !site.isEmpty else {
+        guard !site.isEmpty else {
             throw ToolCallError.invalidExpression
         }
+        // Note: name can be empty for "search all reports"
         
         // Execute SearchReportTool directly with parsed arguments
         let args = SearchReportTool.Arguments(
@@ -2189,14 +2221,15 @@ struct ToolCallView: View {
         )
         let output = try await SearchReportTool().call(arguments: args)
         
+        let nameDisplay = name.isEmpty ? "All Reports" : name
         return ToolCallResult(
             tool: .searchReport,
-            input: "site=\(site) name=\(name)",
+            input: "site=\(site) name=\(nameDisplay)",
             output: output,
             success: true,
             metadata: [
                 "site": site,
-                "name": name
+                "name": nameDisplay
             ]
         )
     }
@@ -2233,6 +2266,18 @@ struct ToolCallView: View {
             // Look for patterns like "search report 13" or "搜索报告 13"
             else if let match = firstMatch(in: input, pattern: #"(?i)(?:search\s+report|搜索报告|检查报告)\s+([^\s,，]+)"#, options: []) {
                 name = match
+            }
+            // Look for patterns like "find inspection report Case"
+            else if let match = firstMatch(in: input, pattern: #"(?i)(?:find\s+inspection\s+report)\s+([^\s,，]+)"#, options: []) {
+                name = match
+            }
+            // Look for patterns like "search for reports containing 0722"
+            else if let match = firstMatch(in: input, pattern: #"(?i)(?:search\s+for\s+reports\s+containing)\s+([^\s,，]+)"#, options: []) {
+                name = match
+            }
+            // Look for patterns like "search all reports" - return empty name to search all
+            else if input.lowercased().contains("search all reports") || input.lowercased().contains("find all reports") {
+                name = "" // Empty name means search all
             }
         }
         
@@ -2583,7 +2628,7 @@ enum ToolType: CaseIterable {
         case .qrGenerator: return "QR Generator"
         case .colorPalette: return "Color Palette"
     case .login: return "Login"
-    case .searchReport: return "Search Report"
+    case .searchReport: return "Inspection Reports"
     case .general: return "General"
         }
     }
@@ -2611,7 +2656,7 @@ enum ToolType: CaseIterable {
         case .qrGenerator: return "qrcode"
         case .colorPalette: return "paintbrush"
     case .login: return "lock"
-    case .searchReport: return "doc.text.magnifyingglass"
+    case .searchReport: return "doc.text.below.ecg"
     case .general: return "questionmark.circle"
         }
     }
@@ -2626,7 +2671,7 @@ enum ToolType: CaseIterable {
         case .colorPalette: return .pink
         // Updated to a more visually appealing accent color instead of gray
     case .login: return .teal
-    case .searchReport: return .indigo
+    case .searchReport: return .brown
     case .general: return Color.indigo // brighter than gray
         }
     }
